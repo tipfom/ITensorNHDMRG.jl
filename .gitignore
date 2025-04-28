@@ -1,0 +1,14 @@
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+*.o
+*.swp
+.DS_Store
+.benchmarkci
+.tmp
+.vscode/
+Manifest.toml
+benchmark/*.json
+docs/Manifest.toml
+docs/build/
+docs/src/index.md
