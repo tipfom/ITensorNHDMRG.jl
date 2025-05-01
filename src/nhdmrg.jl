@@ -161,8 +161,6 @@ function nhdmrg(
     psir0::MPS,
     psil0::MPS,
     sweeps::Sweeps;
-    which_decomp=nothing,
-    svd_alg=nothing,
     observer=NoObserver(),
     outputlevel=1,
     # eigsolve kwargs
@@ -223,7 +221,7 @@ function nhdmrg(
                     Θ,
                     barΘ,
                     1,
-                    :SR,
+                    eigsolve_which_eigenvalue,
                     BiArnoldi(;
                         tol=eigsolve_tol,
                         krylovdim=eigsolve_krylovdim,
@@ -234,15 +232,16 @@ function nhdmrg(
 
                 while length(vals) < 1
                     # did not converge, retrying 
-                    Θp = Θ + 1e-3 * random_itensor(inds(Θ))
-                    barΘp = barΘ + 1e-3 * random_itensor(inds(barΘ))
-
+                    eigsolve_maxiter = div(5eigsolve_maxiter, 3)
+                    eigsolve_krylovdim = div(5eigsolve_krylovdim, 3)
+                    @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
+                    
                     vals, V, W, info = bieigsolve(
                         (fA, fAH),
-                        Θp,
-                        barΘp,
+                        Θ,
+                        barΘ,
                         1,
-                        :SR,
+                        eigsolve_which_eigenvalue,
                         BiArnoldi(;
                             tol=eigsolve_tol,
                             krylovdim=eigsolve_krylovdim,
@@ -299,16 +298,8 @@ function nhdmrg(
                         maxdim(sweeps, sw),
                         mindim(sweeps, sw)
                     )
-                    # @printf(
-                    #     "  R Trunc. err=%.2E, bond dimension %d\n", specr.truncerr, dim(linkind(psir, b))
-                    # )
-                    # @printf(
-                    #     "  L Trunc. err=%.2E, bond dimension %d\n", specl.truncerr, dim(linkind(psil, b))
-                    # )
                     flush(stdout)
                 end
-
-                sweep_is_done = (b == 1 && ha == 2)
             end
         end
         if outputlevel >= 1
