@@ -88,3 +88,27 @@ function ITensorMPS.position!(P::ProjNHMPO, psil::MPS, psir::MPS, pos::Int)
     ITensorMPS.makeR!(P, psil, psir, pos + nsite(P))
     return P
 end
+
+function ITensorMPS.noiseterm(P::ProjNHMPO, thetal::ITensor, thetar::ITensor, ortho::String)::ITensor
+    if nsite(P) != 2
+        error("noise term only defined for 2-site ProjMPO")
+    end
+
+    site_range_P = ITensorMPS.site_range(P)
+    X = if ortho == "left"
+        AL = P.H[first(site_range_P)]
+        AL = lproj(P) * AL
+        AL
+    elseif ortho == "right"
+        AR = P.H[last(site_range_P)]
+        AR = AR * rproj(P)
+        AR
+    else
+        error("In noiseterm, got ortho = $ortho, only supports `left` and `right`")
+    end
+
+    Xl = X * thetal
+    Xr = X * thetar
+
+    Xl * dag(noprime(Xr))
+end

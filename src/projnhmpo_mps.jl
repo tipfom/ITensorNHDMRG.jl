@@ -67,7 +67,7 @@ function ITensorMPS.position!(P::ProjNHMPO_MPS, psil::MPS,psir::MPS, pos::Int)
     return P
 end
 
-noiseterm(P::ProjNHMPO_MPS, phi::ITensor, dir::String) = noiseterm(P.PH, phi, dir)
+ITensorMPS.noiseterm(P::ProjNHMPO_MPS, thetal::ITensor, thetar::ITensor, ortho::String) = ITensorMPS.noiseterm(P.PH, thetal, thetar, ortho)
 
 function ITensorMPS.checkflux(P::ProjNHMPO_MPS)
     checkflux(P.PH)

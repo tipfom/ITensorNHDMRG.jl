@@ -4,8 +4,6 @@ using KrylovKit: geneigsolve, eigsolve, bieigsolve, BiArnoldi
 using Printf: @printf
 using LinearAlgebra
 
-include("projnhmpo.jl")
-
 function nhdmrg(H::MPO, psi0::MPS, sweeps::Sweeps; kwargs...)
     check_hascommoninds(siteinds, H, psi0)
     check_hascommoninds(siteinds, H, psi0')
@@ -56,6 +54,7 @@ function nhreplacebond!(
     phil::ITensor,
     phir::ITensor;
     ortho=nothing,
+    eigen_perturbation=nothing,
     # Decomposition kwargs
     mindim=nothing,
     maxdim=nothing,
@@ -78,10 +77,16 @@ function nhreplacebond!(
     else
         commoninds(Mr[b + 1], phir)
     end
-    replaceinds!(phir, leftindsr, leftindsr'')
+    replaceinds!(phir, leftindsr, leftindsr)
     # @show inds(phir)
 
     rho = phil * dag(phir)
+
+    # @show inds(rho)
+    # @show inds(eigen_perturbation)
+    if !isnothing(eigen_perturbation)
+        rho += eigen_perturbation
+    end
     # @show inds(block)
     # @show norm(rho)
     # @show rho
@@ -162,7 +167,7 @@ function nhdmrg(
     outputlevel=1,
     # eigsolve kwargs
     eigsolve_tol=1e-14,
-    eigsolve_krylovdim=5,
+    eigsolve_krylovdim=3,
     eigsolve_maxiter=3,
     eigsolve_verbosity=0,
     eigsolve_which_eigenvalue=:SR,
@@ -249,19 +254,30 @@ function nhdmrg(
 
                 ortho = ha == 1 ? "left" : "right"
 
+                drho = nothing
+                if noise(sweeps, sw) > 0
+                    # Use noise term when determining new MPS basis.
+                    # This is used to preserve the element type of the MPS.
+                    elt = real(scalartype(psir))
+                    drho = elt(noise(sweeps, sw)) * noiseterm(PH, V[1], W[1], ortho)
+                end
+
                 energy = vals[1]
 
-                nhreplacebond!(
+                spec = nhreplacebond!(
                     psil,
                     psir,
                     b,
                     V[1],
                     W[1];
                     ortho,
+                    eigen_perturbation=drho,
                     maxdim=maxdim(sweeps, sw),
                     mindim=1,
                     cutoff=cutoff(sweeps, sw),
                 )
+
+                maxtruncerr = max(maxtruncerr, spec.truncerr)
 
                 @debug_check begin
                     checkflux(psir)
@@ -307,8 +323,8 @@ function nhdmrg(
             )
             flush(stdout)
         end
-        # isdone = checkdone!(observer; energy, psir, sweep=sw, outputlevel)
-        # isdone && break
+        isdone = checkdone!(observer; energy, psir, sweep=sw, outputlevel)
+        isdone && break
     end
     return (energy, psil, psir)
 end

@@ -67,10 +67,10 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0)
     ishermitian = false
 
     weight = 20.0
-    nsweeps = 60
+    nsweeps = 40
     maxdim = 60
-    cutoff = [fill(1e-5, 5)..., fill(1e-7, 5)..., fill(1e-9, 5)..., fill(1e-10, 5)..., 1e-11]
-    noise = [fill(1e-3, 5)..., fill(1e-5, 5)..., fill(1e-7, 5)..., fill(1e-8, 5)..., fill(1e-9, 5)..., 0.0]
+    cutoff = [fill(1e-5, 4)..., fill(1e-7, 2)..., fill(1e-9, 2)..., fill(1e-10, 4)..., fill(1e-11, 4)..., 1e-12]
+    noise = [fill(1e-3, 4)..., fill(1e-5, 2)..., fill(1e-7, 2)..., fill(1e-8, 4)..., fill(1e-9, 2)..., 0.0]
 
     ψhf = [ifelse(mod(i, 2) == 0, "Occ", "Emp") for i in 1:2N]
     @assert count(ψhf .== "Occ") == count(ψhf .== "Emp")
@@ -86,7 +86,8 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0)
     @info "Found groundstate with energy $Er0"
     # ψl0 = getbiorthogonalmps(ψr0)
     # @show ITensorMPS.inner(ψl0, ψr0)
-    # @show E0 = ITensorMPS.inner(ψl0', H, ψr0) / ITensorMPS.inner(ψl0, ψr0)
+    @show E0 = ITensorMPS.inner(ψl0', H, ψr0) / ITensorMPS.inner(ψl0, ψr0)
+    @show ITensorMPS.inner(ψl0, ψr0)
 
     # ψr0 = random_mps(sites, ψhf; linkdims=5)
     # ψl0 = getbiorthogonalmps(ψr0)
@@ -96,7 +97,7 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0)
     Ψl = [ψl0]
     Er = [Er0]
     for i in 1:nexcitedstates
-        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, random_mps(sites, ψhf; linkdims=5), sweeps)
+        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, random_mps(sites, ψhf; linkdims=5), sweeps; weight)
         # ψli = getbiorthogonalmps(ψri)
         Ei = ITensorMPS.inner(ψli', H, ψri) / ITensorMPS.inner(ψli, ψri)
         push!(Er, Ei)
@@ -134,7 +135,7 @@ function main()
     f(x) = cos(π / (x + 2)) - cos(2π / (x + 2))
 
     Ns = [100, 150, 180, 200, 232]
-    Ns = [100]
+    Ns = [20, 100]
     # Ns = [150]
     Vs = [(c7, 7.0), (c14, 14.0)]
     # Vs = [14.0]

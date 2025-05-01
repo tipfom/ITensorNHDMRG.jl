@@ -53,12 +53,31 @@ end
 
 function lprojr(P::ProjNHMPS)
     (P.lpos <= 0) && return nothing
-    return P.LRl[P.lpos]
+    return P.LRr[P.lpos]
 end
 
 function rprojr(P::ProjNHMPS)
     (P.rpos >= length(P) + 1) && return nothing
-    return P.LRl[P.rpos]
+    return P.LRr[P.rpos]
+end
+
+function getpmrpml(P::ProjNHMPS)
+    Lpmr = dag(prime(P.Mr[P.lpos + 1], "Link"))
+    !isnothing(lprojr(P)) && (Lpmr *= lprojr(P))
+
+    Rpmr = dag(prime(P.Mr[P.rpos - 1], "Link"))
+    !isnothing(rprojr(P)) && (Rpmr *= rprojr(P))
+
+    Lpml = dag(prime(P.Ml[P.lpos + 1], "Link"))
+    !isnothing(lprojl(P)) && (Lpml *= lprojl(P))
+
+    Rpml = dag(prime(P.Ml[P.rpos - 1], "Link"))
+    !isnothing(rprojl(P)) && (Rpml *= rprojl(P))
+
+    pmr = Lpmr * Rpmr
+    pml = Lpml * Rpml
+
+    pmr, pml
 end
 
 function productl(P::ProjNHMPS, vl::ITensor)::ITensor
@@ -66,20 +85,7 @@ function productl(P::ProjNHMPS, vl::ITensor)::ITensor
         error("Only two-site ProjMPS currently supported")
     end
 
-    Lpmr = dag(prime(P.Mr[P.lpos + 1], "Link"))
-    !isnothing(lprojr(P)) && (Lpmr *= lprojr(P))
-
-    Rpmr = dag(prime(P.Mr[P.rpos - 1], "Link"))
-    !isnothing(rprojr(P)) && (Rpmr *= rprojr(P))
-
-    Lpml = dag(prime(P.Mr[P.lpos + 1], "Link"))
-    !isnothing(lprojr(P)) && (Lpml *= lprojr(P))
-
-    Rpml = dag(prime(P.Mr[P.rpos - 1], "Link"))
-    !isnothing(rprojr(P)) && (Rpml *= rprojr(P))
-
-    pmr = Lpmr * Rpmr
-    pml = Lpml * Rpml
+    pmr, pml = getpmrpml(P)
 
     pv = scalar(pmr * vl)
 
@@ -93,20 +99,7 @@ function productr(P::ProjNHMPS, vr::ITensor)::ITensor
         error("Only two-site ProjMPS currently supported")
     end
 
-    Lpmr = dag(prime(P.Mr[P.lpos + 1], "Link"))
-    !isnothing(lprojr(P)) && (Lpmr *= lprojr(P))
-
-    Rpmr = dag(prime(P.Mr[P.rpos - 1], "Link"))
-    !isnothing(rprojr(P)) && (Rpmr *= rprojr(P))
-
-    Lpml = dag(prime(P.Mr[P.lpos + 1], "Link"))
-    !isnothing(lprojr(P)) && (Lpml *= lprojr(P))
-
-    Rpml = dag(prime(P.Mr[P.rpos - 1], "Link"))
-    !isnothing(rprojr(P)) && (Rpml *= rprojr(P))
-
-    pmr = Lpmr * Rpmr
-    pml = Lpml * Rpml
+    pmr, pml = getpmrpml(P)
 
     pv = scalar(pml * vr)
 
