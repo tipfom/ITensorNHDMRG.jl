@@ -15,21 +15,21 @@ function ProjNHMPO_MPS(H::MPO, mpsvl::Vector{MPS}, mpsvr::Vector{MPS}; weight=1.
     )
 end
 
-nsite(P::ProjNHMPO_MPS) = nsite(P.PH)
+ITensorMPS.nsite(P::ProjNHMPO_MPS) = ITensorMPS.nsite(P.PH)
 
-function set_nsite!(Ps::ProjNHMPO_MPS, nsite)
-    set_nsite!(Ps.PH, nsite)
+function ITensorMPS.set_nsite!(Ps::ProjNHMPO_MPS, nsite)
+    ITensorMPS.set_nsite!(Ps.PH, nsite)
     for P in Ps.pm
-        set_nsite!(P, nsite)
+        ITensorMPS.set_nsite!(P, nsite)
     end
     return Ps
 end
 
 Base.length(P::ProjNHMPO_MPS) = length(P.PH)
 
-function site_range(P::ProjNHMPO_MPS)
-    r = site_range(P.PH)
-    @assert all(m -> site_range(m) == r, P.pm)
+function ITensorMPS.site_range(P::ProjNHMPO_MPS)
+    r = ITensorMPS.site_range(P.PH)
+    @assert all(m -> ITensorMPS.site_range(m) == r, P.pm)
     return r
 end
 

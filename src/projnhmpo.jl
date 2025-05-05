@@ -11,7 +11,7 @@ ProjNHMPO(H::MPO) = ProjNHMPO(0, length(H) + 1, 2, H, Vector{ITensor}(undef, len
 
 copy(P::ProjNHMPO) = ProjNHMPO(P.lpos, P.rpos, P.nsite, copy(P.H), copy(P.LR))
 
-function set_nsite!(P::ProjNHMPO, nsite)
+function ITensorMPS.set_nsite!(P::ProjNHMPO, nsite)
     P.nsite = nsite
     return P
 end
@@ -19,7 +19,7 @@ end
 productl(P::ProjNHMPO, v::ITensor) = product(P, v)
 productr(P::ProjNHMPO, v::ITensor) = product(P, v)
 
-nsite(P::ProjNHMPO) = P.nsite
+ITensorMPS.nsite(P::ProjNHMPO) = P.nsite
 
 function ITensorMPS._makeL!(
     P::ProjNHMPO, psil::MPS, psir::MPS, k::Int

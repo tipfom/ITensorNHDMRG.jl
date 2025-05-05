@@ -1,6 +1,6 @@
 using ITensors: @timeit_debug, @debug_check, scalartype, Printf
 using ITensorMPS: check_hascommoninds, ProjMPO, position!
-using KrylovKit: geneigsolve, eigsolve, bieigsolve, BiArnoldi
+using KrylovKit: bieigsolve, BiArnoldi
 using Printf: @printf
 using LinearAlgebra
 
@@ -62,7 +62,11 @@ function nhreplacebond!(
 )
     ortho = NDTensors.replace_nothing(ortho, "left")
 
-    @assert ortho == "left" || ortho == "right"
+    if ortho != "left" && ortho != "right"
+        error(
+            "In replacebond!, got ortho = $ortho, only currently supports `left` and `right`.",
+        )
+    end
 
     leftindsl = if ortho == "left"
         commoninds(Ml[b], phil)
@@ -70,72 +74,32 @@ function nhreplacebond!(
         commoninds(Ml[b + 1], phil)
     end
     replaceinds!(phil, leftindsl, leftindsl')
-    # @show inds(phil)
 
-    leftindsr = if ortho == "left"
-        commoninds(Mr[b], phir)
-    else
-        commoninds(Mr[b + 1], phir)
-    end
-    replaceinds!(phir, leftindsr, leftindsr)
-    # @show inds(phir)
-
+    # compute reduced density matrix and apply perturbation
     rho = phil * dag(phir)
-
-    # @show inds(rho)
-    # @show inds(eigen_perturbation)
     if !isnothing(eigen_perturbation)
         rho += eigen_perturbation
     end
-    # @show inds(block)
-    # @show norm(rho)
-    # @show rho
 
     indsl = commoninds(rho, phil)
     indsr = commoninds(rho, phir)
-
-    # rhomat = Array(rho, indsl..., indsr...)
-    # @show reshape(rhomat, prod(dim(i) for i in indsl), prod(dim(i) for i in indsr))
-
-    # @show indsl
     D, U, spec = eigen(rho, indsl, indsr; mindim, maxdim, cutoff, ishermitian=true)
-    # @show sum(D), size(D)
-    # @show D
-    # @show U
-    # @show inds(U)
+
     U = noprime!(U)
     U = replacetags!(U, tags(commonind(U, D)), tags(commonind(Ml[b], Ml[b + 1])))
-    phil = noprime(phil)
-    phir = noprime(phir)
-    # @show inds(U)
-
+    phil = noprime!(phil)
+    
     normfactor = sqrt(sum(D))
+   
+    for (M, phi) in [(Ml, phil), (Mr, phir)]    
+        L, R = if ortho == "left"
+            U, phi * dag(U) / normfactor
+        elseif ortho == "right"
+            phi * dag(U) / normfactor, U
+        end
+        M[b] = L
+        M[b + 1] = R
 
-    Ll, Rl = if ortho == "left"
-        U, phil * dag(U) / normfactor
-    elseif ortho == "right"
-        phil * dag(U) / normfactor, U
-    end
-    # @show inds(Ml[b])
-    Ml[b] = Ll
-    # @show inds(Ml[b])
-    # @show inds(Ml[b+1])
-    Ml[b + 1] = Rl
-    # @show inds(Ml[b+1])
-
-    Lr, Rr = if ortho == "left"
-        U, phir * dag(U) / normfactor
-    elseif ortho == "right"
-        phir * dag(U) / normfactor, U
-    end
-    # @show inds(Mr[b])
-    Mr[b] = Lr
-    # @show inds(Mr[b])
-    # @show inds(Mr[b+1])
-    Mr[b + 1] = Rr
-    # @show inds(Mr[b+1])
-
-    for M in [Ml, Mr]
         if ortho == "left"
             ITensorMPS.leftlim(M) == b - 1 &&
                 ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) + 1)
@@ -146,14 +110,10 @@ function nhreplacebond!(
                 ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) - 1)
             ITensorMPS.rightlim(M) == b + 2 &&
                 ITensorMPS.setrightlim!(M, ITensorMPS.rightlim(M) - 1)
-        else
-            error(
-                "In replacebond!, got ortho = $ortho, only currently supports `left` and `right`.",
-            )
         end
     end
 
-    return spec
+    spec
 end
 
 function nhdmrg(
@@ -200,9 +160,7 @@ function nhdmrg(
                     checkflux(psir)
                     checkflux(PH)
                 end
-                # @info "LEFT START $b, bonddim: $(maxlinkdim(psil)), "
-                # @show [id(i) for i in linkinds(psir)]
-                # @show [id(i) for i in linkinds(psil)]
+
                 PH = ITensorMPS.position!(PH, psil, psir, b)
 
                 @debug_check begin
