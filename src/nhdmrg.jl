@@ -1,6 +1,6 @@
-using ITensors: @timeit_debug, @debug_check, scalartype, Printf
+using ITensors: @timeit_debug, @debug_check, scalartype, Printf, Algorithm, @Algorithm_str
 using ITensorMPS: check_hascommoninds, ProjMPO, position!
-using KrylovKit: bieigsolve, BiArnoldi
+using KrylovKit: bieigsolve, eigsolve, BiArnoldi
 using Printf: @printf
 using LinearAlgebra
 
@@ -32,19 +32,70 @@ function nhdmrg(
     return nhdmrg(PH, psi0, getbiorthogonalmps!(psi0), sweeps; kwargs...)
 end
 
+function invertitensor(A::ITensor, finv, Linds...)
+    Lis = commoninds(A, ITensors.indices(Linds...))
+    Ris = uniqueinds(A, Lis)
+
+    Cr = combiner(Ris...)
+    Cl = combiner(Lis...)
+
+    A = A * Cr * Cl
+
+    Minv = nothing
+
+    return if hasqns(A)
+        Minv = deepcopy(A)
+        for b in eachnzblock(A)
+            Amat = matrix(A[b])
+            Amatinv = finv(Amat)
+
+            Minv[b] .= adjoint(Amatinv)
+        end
+        Minv * dag(Cr) * dag(Cl)
+    else
+        M = matrix(A, combinedind(Cr), combinedind(Cl))
+        Minv = itensor(adjoint(finv(M)), combinedind(Cr), combinedind(Cl); tol=1e-8)
+        Minv * dag(Cr) * dag(Cl)
+    end
+end
+
+# function invertitensor(A::ITensor, finv, Linds...)
+#     U, S, V = svd(A, Linds...; cutoff=1e-8)
+#     Sinv = S
+#     storage(Sinv) .= 1 ./ storage(Sinv)
+
+#     Ainv = dag(V) * dag(Sinv) * dag(U)
+
+#     return dag(Ainv)
+# end
+
+function LinearAlgebra.inv(A::ITensor, Linds...)
+    return invertitensor(A, inv, Linds...)
+end
+
+function LinearAlgebra.pinv(A::ITensor, Linds...; kwargs...)
+    return invertitensor(A, x -> pinv(x; kwargs...), Linds...)
+end
+
+function LinearAlgebra.inv(A::ITensor)
+    Ris = filterinds(A; plev=0)
+    Lis = Ris'
+    return LinearAlgebra.inv(A, Lis)
+end
+
+function LinearAlgebra.pinv(A::ITensor; kwargs...)
+    Ris = filterinds(A; plev=0)
+    Lis = Ris'
+    return LinearAlgebra.pinv(A, Lis; kwargs...)
+end
+
 function getbiorthogonalmps!(ψ)
     orthogonalize!(ψ, 1)
 
     ψo = deepcopy(ψ)
-    rinds = uniqueinds(ψo[1], ψo[2])
-    ltags = tags(commonind(ψo[1], ψo[2]))
-    U, S, V, spec = svd(ψo[1], rinds; lefttags=ltags)
-    Sinv = deepcopy(S)
-    storage(Sinv) .= 1 ./ storage(Sinv)
+    ψo[1] = pinv(ψo[1], uniqueinds(ψo[1], ψo[2]))
 
-    ψo[1] = U * S * V
-
-    return ψo
+    return ψo / inner(ψo, ψ)
 end
 
 function nhreplacebond!(
@@ -88,12 +139,14 @@ function nhreplacebond!(
     U = noprime!(U)
     U = replacetags!(U, tags(commonind(U, D)), tags(commonind(Ml[b], Ml[b + 1])))
     phil = noprime!(phil)
-    
-    normfactor = sqrt(sum(D))
-   
-    for (M, phi) in [(Ml, phil), (Mr, phir)]    
+
+    sD = sum(D)
+
+    normfactor = sqrt(abs(sD))
+
+    for (M, phi) in [(Ml, phil), (Mr, phir)]
         L, R = if ortho == "left"
-            U, phi * dag(U) / normfactor
+            U, phi * dag(U) / (sign(sD) * normfactor)
         elseif ortho == "right"
             phi * dag(U) / normfactor, U
         end
@@ -113,14 +166,150 @@ function nhreplacebond!(
         end
     end
 
-    spec
+    return spec
 end
 
+function eigproblemsolver!(
+    ::Algorithm"twosided",
+    PH,
+    Θl,
+    Θr,
+    leftinds;
+    eigsolve_tol,
+    eigsolve_krylovdim,
+    eigsolve_maxiter,
+    eigsolve_verbosity,
+    eigsolve_which_eigenvalue,
+)
+    fA = x -> productr(PH, x)
+    fAH = x -> productl(PH, x)
+
+    vals, V, W, info = bieigsolve(
+        (fA, fAH),
+        Θr,
+        Θl,
+        1,
+        eigsolve_which_eigenvalue,
+        BiArnoldi(;
+            tol=eigsolve_tol,
+            krylovdim=eigsolve_krylovdim,
+            maxiter=eigsolve_maxiter,
+            verbosity=eigsolve_verbosity,
+        ),
+    )
+
+    while length(vals) < 1
+        # did not converge, retrying 
+        eigsolve_maxiter = div(5eigsolve_maxiter, 3)
+        eigsolve_krylovdim = div(5eigsolve_krylovdim, 3)
+        @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
+
+        vals, V, W, info = bieigsolve(
+            (fA, fAH),
+            Θr,
+            Θl,
+            1,
+            eigsolve_which_eigenvalue,
+            BiArnoldi(;
+                tol=eigsolve_tol,
+                krylovdim=eigsolve_krylovdim,
+                maxiter=eigsolve_maxiter,
+                verbosity=eigsolve_verbosity,
+            ),
+        )
+    end
+
+    return first(vals), first(V), first(W)
+end
+
+function eigproblemsolver!(
+    ::Algorithm"pseudoonesided",
+    PH,
+    Θl,
+    Θr,
+    leftinds;
+    eigsolve_tol,
+    eigsolve_krylovdim,
+    eigsolve_maxiter,
+    eigsolve_verbosity,
+    eigsolve_which_eigenvalue,
+)
+    fA = x -> productr(PH, x)
+    fAH = x -> productl(PH, x)
+
+    vals, vecs = eigsolve(
+        fAH,
+        Θl,
+        1,
+        eigsolve_which_eigenvalue;
+        ishermitian=false,
+        tol=eigsolve_tol,
+        krylovdim=eigsolve_krylovdim,
+        maxiter=eigsolve_maxiter,
+        verbosity=eigsolve_verbosity,
+    )
+
+    v = noprime(first(vecs))
+   
+    w = if isnothing(leftinds)
+        v
+    else
+        pinv(v, leftinds)
+    end
+    @assert length(inds(w)) == length(commoninds(inds(v), inds(w))) == length(inds(w)) "Index mismatch between $(inds(v)) and $(inds(w))"
+
+    return first(vals), noprime(v), noprime(w)
+end
+
+function eigproblemsolver!(
+    ::Algorithm"onesided",
+    PH,
+    Θl,
+    Θr,
+    leftinds;
+    eigsolve_tol,
+    eigsolve_krylovdim,
+    eigsolve_maxiter,
+    eigsolve_verbosity,
+    eigsolve_which_eigenvalue,
+)
+    fA = x -> productr(PH, x)
+    fAH = x -> productl(PH, x)
+
+    valsH, vecsH = eigsolve(
+        fAH,
+        Θl,
+        1,
+        eigsolve_which_eigenvalue;
+        ishermitian=false,
+        tol=eigsolve_tol,
+        krylovdim=eigsolve_krylovdim,
+        maxiter=eigsolve_maxiter,
+        verbosity=eigsolve_verbosity,
+    )
+    
+    vals, vecs = eigsolve(
+        fA,
+        Θr,
+        1,
+        eigsolve_which_eigenvalue;
+        ishermitian=false,
+        tol=eigsolve_tol,
+        krylovdim=eigsolve_krylovdim,
+        maxiter=eigsolve_maxiter,
+        verbosity=eigsolve_verbosity,
+    )
+
+    return first(vals), noprime(first(vecsH)), noprime(first(vecs))
+end
+
+# current options for alg are "twosided" "onesided" and "pseudoonesided"
 function nhdmrg(
     PH,
     psir0::MPS,
     psil0::MPS,
     sweeps::Sweeps;
+    alg="twosided",
     observer=NoObserver(),
     outputlevel=1,
     # eigsolve kwargs
@@ -168,46 +357,21 @@ function nhdmrg(
                     checkflux(PH)
                 end
 
-                Θ = psir[b] * psir[b + 1]
-                barΘ = psil[b] * psil[b + 1]
+                Θr = psir[b] * psir[b + 1]
+                Θl = psil[b] * psil[b + 1]
 
-                fA = x -> productr(PH, x)
-                fAH = x -> productl(PH, x)
-
-                vals, V, W, info = bieigsolve(
-                    (fA, fAH),
-                    Θ,
-                    barΘ,
-                    1,
+                energy, v, w = eigproblemsolver!(
+                    Algorithm(alg),
+                    PH,
+                    Θl,
+                    Θr,
+                    linkind(psir, b + ifelse(ha==1, 1, -1));
+                    eigsolve_tol,
+                    eigsolve_krylovdim,
+                    eigsolve_maxiter,
+                    eigsolve_verbosity,
                     eigsolve_which_eigenvalue,
-                    BiArnoldi(;
-                        tol=eigsolve_tol,
-                        krylovdim=eigsolve_krylovdim,
-                        maxiter=eigsolve_maxiter,
-                        verbosity=eigsolve_verbosity,
-                    ),
                 )
-
-                while length(vals) < 1
-                    # did not converge, retrying 
-                    eigsolve_maxiter = div(5eigsolve_maxiter, 3)
-                    eigsolve_krylovdim = div(5eigsolve_krylovdim, 3)
-                    @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
-                    
-                    vals, V, W, info = bieigsolve(
-                        (fA, fAH),
-                        Θ,
-                        barΘ,
-                        1,
-                        eigsolve_which_eigenvalue,
-                        BiArnoldi(;
-                            tol=eigsolve_tol,
-                            krylovdim=eigsolve_krylovdim,
-                            maxiter=eigsolve_maxiter,
-                            verbosity=eigsolve_verbosity,
-                        ),
-                    )
-                end
 
                 ortho = ha == 1 ? "left" : "right"
 
@@ -216,17 +380,15 @@ function nhdmrg(
                     # Use noise term when determining new MPS basis.
                     # This is used to preserve the element type of the MPS.
                     elt = real(scalartype(psir))
-                    drho = elt(noise(sweeps, sw)) * noiseterm(PH, V[1], W[1], ortho)
+                    drho = elt(noise(sweeps, sw)) * noiseterm(PH, v, w, ortho)
                 end
-
-                energy = vals[1]
 
                 spec = nhreplacebond!(
                     psil,
                     psir,
                     b,
-                    V[1],
-                    W[1];
+                    v,
+                    w;
                     ortho,
                     eigen_perturbation=drho,
                     maxdim=maxdim(sweeps, sw),

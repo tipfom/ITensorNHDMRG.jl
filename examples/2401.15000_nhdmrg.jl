@@ -110,7 +110,7 @@ function main()
     plot!(ax, f.(N_refdmrg), y_refdmrg[1, :]; color=c7, marker=:utriangle)
     plot!(ax, f.(N_refdmrg), y_refdmrg[2, :]; color=c14, marker=:utriangle)
 
-    Ns = [20, 100] # 150, 180, 200, 232]
+    Ns = [20] # 100, 150, 180, 200, 232]
     Vs = [(c7, 7.0), (c14, 14.0)]
     
     Δ1s = zeros(length(Vs), length(Ns))
