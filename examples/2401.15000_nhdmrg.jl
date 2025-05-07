@@ -37,7 +37,7 @@ function hamiltonian(sites; tL, tR, V, t2, u)
     MPO(H, sites)
 end
 
-function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0)
+function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0, alg="twosided")
     sites = siteinds("Fermion", 2N; conserve_qns=true)
     tL = t1 - γ
     tR = t1 + γ
@@ -46,11 +46,18 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0)
     @info "starting constructing the Hamiltonian"
     H = hamiltonian(sites; tL, tR, V, t2, u)
 
-    weight = 20.0
-    nsweeps = 40
-    maxdim = 60
-    cutoff = [fill(1e-5, 4)..., fill(1e-7, 2)..., fill(1e-9, 2)..., fill(1e-10, 4)..., fill(1e-11, 4)..., 1e-12]
-    noise = [fill(1e-3, 4)..., fill(1e-5, 2)..., fill(1e-7, 2)..., fill(1e-8, 4)..., fill(1e-9, 2)..., 0.0]
+    weight = 200.0
+    nsweeps = 100
+    maxdim = 100
+    cutoff = [fill(1e-5, 6)..., fill(1e-7, 6)..., fill(1e-9, 6)..., fill(1e-10, 6)..., fill(1e-11, 4)..., 1e-12]
+    noise = [fill(1e-3, 20)..., fill(1e-5, 30)..., fill(1e-7, 6)..., fill(1e-8, 6)..., fill(1e-9, 2)..., 0.0]
+
+    refinementweight = 20000.0
+    refinementnsweeps = 20
+    refinementmaxdim = 100
+    refinementcutoff = [1e-13]
+    refinementnoise = [0.0]
+
 
     ψhf = [ifelse(mod(i, 2) == 0, "Occ", "Emp") for i in 1:2N]
     @assert count(ψhf .== "Occ") == count(ψhf .== "Emp")
@@ -60,8 +67,10 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0)
     nexcitedstates = 1
 
     sweeps = Sweeps(nsweeps; maxdim, cutoff, noise)
+    refinementsweeps = Sweeps(refinementnsweeps; maxdim=refinementmaxdim, cutoff=refinementcutoff, noise=refinementnoise)
 
-    Er0, ψr0, ψl0 = nhdmrg(H, random_mps(sites, ψhf; linkdims=5), sweeps)
+    initial_guess = random_mps(sites, ψhf; linkdims=5)
+    Er0, ψr0, ψl0 = nhdmrg(H, initial_guess, initial_guess, sweeps; alg)
     @info "Found groundstate with energy $Er0"
     @show E0 = ITensorMPS.inner(ψl0', H, ψr0) / ITensorMPS.inner(ψl0, ψr0)
     @show ITensorMPS.inner(ψl0, ψr0)
@@ -70,12 +79,17 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0)
     Ψl = [ψl0]
     Er = [Er0]
     for i in 1:nexcitedstates
-        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, random_mps(sites, ψhf; linkdims=5), sweeps; weight)
+        initial_guess = random_mps(sites, ψhf; linkdims=5)
+        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, initial_guess, initial_guess, sweeps; weight, alg)
+        @info "refining the biorthogonality"
+        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, ψri, ψli, refinementsweeps; weight=refinementweight, alg, isbiortho=true)
         Ei = ITensorMPS.inner(ψli', H, ψri) / ITensorMPS.inner(ψli, ψri)
         push!(Er, Ei)
+        @show inner(ψl0, ψri)
+        @show inner(ψr0, ψli)
         push!(Ψr, ψri)
         push!(Ψl, ψli)
-        @info "Found excited state #$i at energy $Eri, $(ITensorMPS.inner(ψli', H, ψri) / ITensorMPS.inner(ψli, ψri))"
+        @info "Found excited state #$i at energy $Eri, $Ei"
     end
 
     E = real.(Er)
@@ -98,37 +112,52 @@ function main()
     c7 = :red
     c14 = :blue
 
+    y_refdmrg = [0.1524727667218535 0.07890564602254813 0.03213118993691921; 0.10051067204251751 0.048929772932453375 0.018927706144852507]
+    N_refdmrg = [20, 30, 50]
+
+    f(x) = cos(π / (x + 2)) - cos(2π / (x + 2))
+
+    append!(x_refV7, reverse(f.(N_refdmrg)))
+    append!(y_refV7, reverse(y_refdmrg[1, :]))
+    
+    append!(x_refV14, reverse(f.(N_refdmrg)))
+    append!(y_refV14, reverse(y_refdmrg[2, :]))
+    
     plot!(ax, x_refV7, y_refV7, label="Ref. V = 7.0", color=(c7, 0.5))
     lines!(ax, x_refV7, y_refV7, color=(c7, 0.5))
     plot!(ax, x_refV14, y_refV14, label="Ref. V = 14.0", color=(c14, 0.5))
     lines!(ax, x_refV14, y_refV14, color=(c14, 0.5))
 
-    f(x) = cos(π / (x + 2)) - cos(2π / (x + 2))
-    
-    y_refdmrg = [0.1524727667218535 0.07890564602254813 0.03213118993691921; 0.10051067204251751 0.048929772932453375 0.018927706144852507]
-    N_refdmrg = [20, 30, 50]
-    plot!(ax, f.(N_refdmrg), y_refdmrg[1, :]; color=c7, marker=:utriangle)
-    plot!(ax, f.(N_refdmrg), y_refdmrg[2, :]; color=c14, marker=:utriangle)
 
-    Ns = [20] # 100, 150, 180, 200, 232]
+    Ns = [20, 100, 200]
+    Ns = [20, 50, 100, 150, 200]
+    Ns = [150]
     Vs = [(c7, 7.0), (c14, 14.0)]
+    Vs = [(c7, 7.0)]
+    methods = [("twosided", :star5), ("onesided", :xcross)]
+    methods = [("twosided", :star5)]
+
+    for (alg, marker) in methods 
+        @info "running method $alg"
+
+        Δ1s = zeros(length(Vs), length(Ns))
+        Δ2s = zeros(length(Vs), length(Ns))
+        for i in CartesianIndices(Δ1s)
+            V = Vs[i[1]][2]
+            N = Ns[i[2]]
     
-    Δ1s = zeros(length(Vs), length(Ns))
-    Δ2s = zeros(length(Vs), length(Ns))
-    for i in CartesianIndices(Δ1s)
-        V = Vs[i[1]][2]
-        N = Ns[i[2]]
-
-        Δ1s[i] = gap(N; V)
+            Δ1s[i] = gap(N; V, alg)
+        end
+    
+        @show Δ1s
+        @show Δ2s
+    
+        for (i, x) in enumerate(Vs)
+            c, V = x
+            plot!(ax, f.(Ns), Δ1s[i, :]; label=ifelse(i == 1, "$alg", nothing), color=c, marker)
+        end
     end
 
-    @show Δ1s
-    @show Δ2s
-
-    for (i, x) in enumerate(Vs)
-        c, V = x
-        plot!(ax, f.(Ns), Δ1s[i, :]; label="V = $V (1st)", color=c, marker=:star5)
-    end
 
     axislegend(ax; position=:lt)
     display(fig)

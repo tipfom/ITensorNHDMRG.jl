@@ -4,98 +4,35 @@ using KrylovKit: bieigsolve, eigsolve, BiArnoldi
 using Printf: @printf
 using LinearAlgebra
 
-function nhdmrg(H::MPO, psi0::MPS, sweeps::Sweeps; kwargs...)
-    check_hascommoninds(siteinds, H, psi0)
-    check_hascommoninds(siteinds, H, psi0')
+function nhdmrg(H::MPO, psir0::MPS, psil0::MPS, sweeps::Sweeps; kwargs...)
+    check_hascommoninds(siteinds, H, psir0)
+    check_hascommoninds(siteinds, H, psil0')
+    check_hascommoninds(siteinds, psir0, psil0)
     # Permute the indices to have a better memory layout
     # and minimize permutations
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO(H)
-    return nhdmrg(PH, psi0, getbiorthogonalmps!(psi0), sweeps; kwargs...)
+    return nhdmrg(PH, psir0, psil0, sweeps; kwargs...)
 end
 
 function nhdmrg(
     H::MPO,
     Msl::Vector{MPS},
     Msr::Vector{MPS},
-    psi0::MPS,
+    psir0::MPS,
+    psil0::MPS,
     sweeps::Sweeps;
     weight=true,
     kwargs...,
 )
-    check_hascommoninds(siteinds, H, psi0)
-    check_hascommoninds(siteinds, H, psi0')
+    check_hascommoninds(siteinds, H, psir0)
+    check_hascommoninds(siteinds, H, psil0')
+    check_hascommoninds(siteinds, psir0, psil0)
     # Permute the indices to have a better memory layout
     # and minimize permutations
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO_MPS(H, Msl, Msr; weight)
-    return nhdmrg(PH, psi0, getbiorthogonalmps!(psi0), sweeps; kwargs...)
-end
-
-function invertitensor(A::ITensor, finv, Linds...)
-    Lis = commoninds(A, ITensors.indices(Linds...))
-    Ris = uniqueinds(A, Lis)
-
-    Cr = combiner(Ris...)
-    Cl = combiner(Lis...)
-
-    A = A * Cr * Cl
-
-    Minv = nothing
-
-    return if hasqns(A)
-        Minv = deepcopy(A)
-        for b in eachnzblock(A)
-            Amat = matrix(A[b])
-            Amatinv = finv(Amat)
-
-            Minv[b] .= adjoint(Amatinv)
-        end
-        Minv * dag(Cr) * dag(Cl)
-    else
-        M = matrix(A, combinedind(Cr), combinedind(Cl))
-        Minv = itensor(adjoint(finv(M)), combinedind(Cr), combinedind(Cl); tol=1e-8)
-        Minv * dag(Cr) * dag(Cl)
-    end
-end
-
-# function invertitensor(A::ITensor, finv, Linds...)
-#     U, S, V = svd(A, Linds...; cutoff=1e-8)
-#     Sinv = S
-#     storage(Sinv) .= 1 ./ storage(Sinv)
-
-#     Ainv = dag(V) * dag(Sinv) * dag(U)
-
-#     return dag(Ainv)
-# end
-
-function LinearAlgebra.inv(A::ITensor, Linds...)
-    return invertitensor(A, inv, Linds...)
-end
-
-function LinearAlgebra.pinv(A::ITensor, Linds...; kwargs...)
-    return invertitensor(A, x -> pinv(x; kwargs...), Linds...)
-end
-
-function LinearAlgebra.inv(A::ITensor)
-    Ris = filterinds(A; plev=0)
-    Lis = Ris'
-    return LinearAlgebra.inv(A, Lis)
-end
-
-function LinearAlgebra.pinv(A::ITensor; kwargs...)
-    Ris = filterinds(A; plev=0)
-    Lis = Ris'
-    return LinearAlgebra.pinv(A, Lis; kwargs...)
-end
-
-function getbiorthogonalmps!(ψ)
-    orthogonalize!(ψ, 1)
-
-    ψo = deepcopy(ψ)
-    ψo[1] = pinv(ψo[1], uniqueinds(ψo[1], ψo[2]))
-
-    return ψo / inner(ψo, ψ)
+    return nhdmrg(PH, psir0, psil0, sweeps; kwargs...)
 end
 
 function nhreplacebond!(
@@ -173,8 +110,7 @@ function eigproblemsolver!(
     ::Algorithm"twosided",
     PH,
     Θl,
-    Θr,
-    leftinds;
+    Θr;
     eigsolve_tol,
     eigsolve_krylovdim,
     eigsolve_maxiter,
@@ -223,50 +159,10 @@ function eigproblemsolver!(
 end
 
 function eigproblemsolver!(
-    ::Algorithm"pseudoonesided",
-    PH,
-    Θl,
-    Θr,
-    leftinds;
-    eigsolve_tol,
-    eigsolve_krylovdim,
-    eigsolve_maxiter,
-    eigsolve_verbosity,
-    eigsolve_which_eigenvalue,
-)
-    fA = x -> productr(PH, x)
-    fAH = x -> productl(PH, x)
-
-    vals, vecs = eigsolve(
-        fAH,
-        Θl,
-        1,
-        eigsolve_which_eigenvalue;
-        ishermitian=false,
-        tol=eigsolve_tol,
-        krylovdim=eigsolve_krylovdim,
-        maxiter=eigsolve_maxiter,
-        verbosity=eigsolve_verbosity,
-    )
-
-    v = noprime(first(vecs))
-   
-    w = if isnothing(leftinds)
-        v
-    else
-        pinv(v, leftinds)
-    end
-    @assert length(inds(w)) == length(commoninds(inds(v), inds(w))) == length(inds(w)) "Index mismatch between $(inds(v)) and $(inds(w))"
-
-    return first(vals), noprime(v), noprime(w)
-end
-
-function eigproblemsolver!(
     ::Algorithm"onesided",
     PH,
     Θl,
-    Θr,
-    leftinds;
+    Θr;
     eigsolve_tol,
     eigsolve_krylovdim,
     eigsolve_maxiter,
@@ -287,7 +183,7 @@ function eigproblemsolver!(
         maxiter=eigsolve_maxiter,
         verbosity=eigsolve_verbosity,
     )
-    
+
     vals, vecs = eigsolve(
         fA,
         Θr,
@@ -303,13 +199,59 @@ function eigproblemsolver!(
     return first(vals), noprime(first(vecsH)), noprime(first(vecs))
 end
 
-# current options for alg are "twosided" "onesided" and "pseudoonesided"
+function biorthogonalize!(psir, psil; mindim=nothing, maxdim=10, cutoff=nothing)
+    @assert siteinds(psir) == siteinds(psil) "both MPS need to share the same basis"
+
+    sites = siteinds(psir)
+
+    noprime!(psir)
+    noprime!(psil)
+    prime!(psir, "Link")
+
+    M = ITensor[]
+    for i in firstindex(sites):lastindex(sites)
+        Mi = ITensor(1)
+
+        if length(M) > 0
+            Mi = M[end] * delta(prime(dag(sites[i - 1])), sites[i - 1])
+        end
+
+        Mi *= prime(psir[i], sites[i])
+        Mi *= dag(psil[i])
+        push!(M, Mi)
+    end
+
+    for i in lastindex(sites):-1:2
+        D, U = eigen(M[i]; ishermitian=true, mindim, maxdim, cutoff)
+
+        replacetags!(U, "Link,eigen" => "Link,l=$i")
+
+        Er = psir[i] * prime(dag(U), "Link")
+        M[i - 1] = M[i - 1] * Er
+        
+        El = psil[i] * dag(U)
+        M[i - 1] = M[i - 1] * dag(El)
+
+        psir[i - 1] *= Er
+        psil[i - 1] *= El
+        psir[i] = prime(U, "Link")
+        psil[i] = U
+    end
+
+    noprime!(psil)
+    noprime!(psir)
+
+    return psir, psil
+end
+
+# current options for alg are "twosided" and "onesided" 
 function nhdmrg(
     PH,
     psir0::MPS,
     psil0::MPS,
     sweeps::Sweeps;
     alg="twosided",
+    isbiortho=false,
     observer=NoObserver(),
     outputlevel=1,
     # eigsolve kwargs
@@ -335,7 +277,10 @@ function nhdmrg(
     psir = deepcopy(psir0)
     psil = deepcopy(psil0)
     N = length(psir0)
-    @assert isortho(psir) && orthocenter(psir) == 1
+    
+    if !isbiortho
+        psir, psil = biorthogonalize!(psir, psil)
+    end
 
     PH = ITensorMPS.position!(PH, psil, psir, 1)
     energy = 0.0
@@ -364,8 +309,7 @@ function nhdmrg(
                     Algorithm(alg),
                     PH,
                     Θl,
-                    Θr,
-                    linkind(psir, b + ifelse(ha==1, 1, -1));
+                    Θr;
                     eigsolve_tol,
                     eigsolve_krylovdim,
                     eigsolve_maxiter,
@@ -424,11 +368,10 @@ function nhdmrg(
         end
         if outputlevel >= 1
             @printf(
-                "After sweep %d energy=%s  maxlinkdim=(l: %d, r: %d) maxerr=%.2E time=%.3f\n",
+                "After sweep %d energy=%s  maxlinkdim=%d maxerr=%.2E time=%.3f\n",
                 sw,
                 energy,
                 maxlinkdim(psil),
-                maxlinkdim(psir),
                 maxtruncerr,
                 sw_time
             )
