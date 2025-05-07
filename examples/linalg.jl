@@ -1,10 +1,12 @@
-using ITensors, ITensorMPS, ITensorNHDMRG
+using ITensors, ITensorMPS
 using LinearAlgebra
 
-i = Index(5)
+include("../src/linalg.jl")
+
+i = Index(QN(0) => 5)
 M = random_itensor(i, i')
 
-B, Y, Ybar = ITensorNHDMRG.transform(M, [i], [i']; keep=3)
+B, Y, Ybar = transform(M, [i], [i']; keep=3)
 Mt = Y * B * dag(Ybar)
 
 display(matrix(M))
