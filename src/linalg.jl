@@ -24,9 +24,9 @@ function transform(
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
     lB, lY, lYbar = transform(matrix(M); kwargs...)
-    @show B = first(lB)
-    @show Y = first(lY)
-    @show Ybar = first(lYbar)
+    B = first(lB)
+    Y = first(lY)
+    Ybar = first(lYbar)
 
     link = Index(size(B, 1))
 
@@ -87,9 +87,9 @@ function transform(
         ITensors.setblockdim!(l, minimum(size(lB[n])), n)
     end
 
-    r = dag(sim(l))
+    r = sim(l)
 
-    indsB = (dag(l), r)
+    indsB = (dag(l), dag(r))
     indsY = (i1, l)
     indsYbar = (i2, r)
 
@@ -139,7 +139,6 @@ end
 function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
     cumdims = cumsum([size(M, 1) for M in Ms])
-    @show cumdims
 
     Fs = Schur[]
     sizehint!(Fs, length(Ms))
@@ -150,11 +149,15 @@ function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
         push!(Fs, F)
         # We have that M = F.vectors * F.Schur * F.vectors'
 
-        vals[(i == firstindex(Ms) ? 1 : cumdims[i - 1]):cumdims[i]] = F.values
+        vals[(i == firstindex(Ms) ? 1 : cumdims[i - 1] + 1):cumdims[i]] = F.values
     end
 
-    keep >= length(vals) &&
-        return [F.Schur for F in Fs], [F.vectors for F in Fs], [F.vectors for F in Fs]
+    if keep >= length(vals)
+        @info "trying to keep more values that matrix has dimension"
+        return [F.Schur for F in Fs],
+        [F.vectors for F in Fs],
+        [conj.(F.vectors) for F in Fs]
+    end
 
     # permute the Schur decomposition such that (0 ... keep) are in the beginning and the discarded 
     # part of M is at (keep+1 ... end)
@@ -171,9 +174,23 @@ function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
     lYbar = Matrix[]
 
     for (i, F) in enumerate(Fs)
-        selecti = select[(i == firstindex(Ms) ? 1 : cumdims[i - 1]):cumdims[i]]
+        selecti = select[(i == firstindex(Ms) ? 1 : cumdims[i - 1] + 1):cumdims[i]]
         F = ordschur!(F, selecti)
         keepi = sum(selecti)
+
+        if keepi == 0
+            push!(lB, Matrix{eltype(F.Schur)}(undef, 0, 0))
+            push!(lY, Matrix{eltype(F.vectors)}(undef, 0, 0))
+            push!(lYbar, Matrix{eltype(F.vectors)}(undef, 0, 0))
+            continue
+        end
+
+        if keepi >= length(F.values)
+            push!(lB, F.Schur)
+            push!(lY, F.vectors)
+            push!(lYbar, conj(F.vectors))
+            continue
+        end
 
         if eltype(F) <: Real && !iszero(F.Schur[keepi + 1, keepi])
             @info "Increasing keep in block $i because of 2x2 block in the Schur decomposition"
@@ -208,7 +225,7 @@ function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
         # K, Y, Ybar
         push!(lB, A)
         push!(lY, Ys)
-        push!(lYbar, Ybars)
+        push!(lYbar, conj(Ybars))
     end
 
     return lB, lY, lYbar
