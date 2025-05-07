@@ -50,12 +50,6 @@ function transform(M::Matrix{ElT}; keep) where {ElT<:Union{Real,Complex}}
     keep >= length(vals) && return F.Schur, F.vectors, F.vectors
     
     valsperm = sortperm(vals; by=abs2, rev=true)
-    
-    if eltype(F) <: Real  && !iszero(F.Schur[keep + 1, keep])
-        @info "Increasing $keep because of 2x2 block in the Schur decomposition"
-        keep += 1
-    end
-
     select = zeros(Bool, size(vals))
     for i in firstindex(valsperm):(firstindex(valsperm) + keep - 1)
         select[valsperm[i]] = true
@@ -64,6 +58,10 @@ function transform(M::Matrix{ElT}; keep) where {ElT<:Union{Real,Complex}}
     @assert sum(select) == keep
 
     F = ordschur!(F, select)
+    if eltype(F) <: Real  && !iszero(F.Schur[keep + 1, keep])
+        @info "Increasing $keep because of 2x2 block in the Schur decomposition"
+        keep += 1
+    end
 
     @views A = F.Schur[1:keep, 1:keep]
     @views B = F.Schur[(keep + 1):end, 1:keep]
