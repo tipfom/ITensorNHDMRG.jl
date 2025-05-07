@@ -131,7 +131,7 @@ function main()
 
     Ns = [20, 100, 200]
     Ns = [20, 50, 100, 150, 200]
-    Ns = [150]
+    Ns = [20]
     Vs = [(c7, 7.0), (c14, 14.0)]
     Vs = [(c7, 7.0)]
     methods = [("twosided", :star5), ("onesided", :xcross)]

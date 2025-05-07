@@ -9,7 +9,7 @@ mutable struct ProjNHMPO <: ITensorMPS.AbstractProjMPO
 end
 ProjNHMPO(H::MPO) = ProjNHMPO(0, length(H) + 1, 2, H, Vector{ITensor}(undef, length(H)))
 
-copy(P::ProjNHMPO) = ProjNHMPO(P.lpos, P.rpos, P.nsite, copy(P.H), copy(P.LR))
+Base.copy(P::ProjNHMPO) = ProjNHMPO(P.lpos, P.rpos, P.nsite, copy(P.H), copy(P.LR))
 
 function ITensorMPS.set_nsite!(P::ProjNHMPO, nsite)
     P.nsite = nsite

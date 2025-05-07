@@ -6,6 +6,7 @@ include("projnhmpo.jl")
 include("projnhmps.jl")
 include("projnhmpo_mps.jl")
 include("nhdmrg.jl")
+include("linalg.jl")
 
 export nhdmrg
 

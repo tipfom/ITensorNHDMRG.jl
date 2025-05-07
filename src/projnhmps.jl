@@ -18,7 +18,7 @@ function ProjNHMPS(Ml::MPS, Mr::MPS)
     )
 end
 
-function copy(P::ProjNHMPS)
+function Base.copy(P::ProjNHMPS)
     return ProjNHMPS(copy(P.projL), copy(P.projR), P.cached_site_range, copy(P.envL), copy(P.envR))
 end
 
