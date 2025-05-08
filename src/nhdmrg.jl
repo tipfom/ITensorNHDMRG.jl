@@ -36,6 +36,7 @@ function nhdmrg(
 end
 
 function nhreplacebond!(
+    ::Algorithm"pseudoeigen",
     Ml::MPS,
     Mr::MPS,
     b::Int,
@@ -86,6 +87,76 @@ function nhreplacebond!(
             U, phi * dag(U) / (sign(sD) * normfactor)
         elseif ortho == "right"
             phi * dag(U) / normfactor, U
+        end
+        M[b] = L
+        M[b + 1] = R
+
+        if ortho == "left"
+            ITensorMPS.leftlim(M) == b - 1 &&
+                ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) + 1)
+            ITensorMPS.rightlim(M) == b + 1 &&
+                ITensorMPS.setrightlim!(M, ITensorMPS.rightlim(M) + 1)
+        elseif ortho == "right"
+            ITensorMPS.leftlim(M) == b &&
+                ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) - 1)
+            ITensorMPS.rightlim(M) == b + 2 &&
+                ITensorMPS.setrightlim!(M, ITensorMPS.rightlim(M) - 1)
+        end
+    end
+
+    return spec
+end
+
+function nhreplacebond!(
+    ::Algorithm"biorthoblock",
+    Ml::MPS,
+    Mr::MPS,
+    b::Int,
+    phil::ITensor,
+    phir::ITensor;
+    ortho=nothing,
+    eigen_perturbation=nothing,
+    # Decomposition kwargs
+    mindim=nothing,
+    maxdim=nothing,
+    cutoff=nothing,
+)
+    ortho = NDTensors.replace_nothing(ortho, "left")
+
+    if ortho != "left" && ortho != "right"
+        error(
+            "In replacebond!, got ortho = $ortho, only currently supports `left` and `right`.",
+        )
+    end
+
+    leftindsl = if ortho == "left"
+        commoninds(Ml[b], phil)
+    else
+        commoninds(Ml[b + 1], phil)
+    end
+    replaceinds!(phil, leftindsl, leftindsl')
+
+    # compute reduced density matrix and apply perturbation
+    rho = phil * dag(phir)
+    if !isnothing(eigen_perturbation)
+        rho += eigen_perturbation
+    end
+
+    indsl = commoninds(rho, phil)
+    indsr = commoninds(rho, phir)
+    B, Y, Ybar, spec = transform(rho, indsl, indsr; maxdim, mindim, cutoff)
+
+    noprime!(Y)
+    noprime!(Ybar)
+    replaceinds!(phil, leftindsl', leftindsl)
+
+    normfactor = sqrt(sum(abs, eigs(spec)))
+
+    for (M, phi, U, U2) in [(Ml, phil, Y, dag(Ybar)), (Mr, phir, dag(Ybar), Y)]
+        L, R = if ortho == "left"
+            U, phi * dag(U2)  / normfactor
+        elseif ortho == "right"
+            phi * dag(U2) / normfactor, U
         end
         M[b] = L
         M[b + 1] = R
@@ -251,6 +322,7 @@ function nhdmrg(
     psil0::MPS,
     sweeps::Sweeps;
     alg="twosided",
+    biorthoalg="biorthoblock",
     isbiortho=false,
     observer=NoObserver(),
     outputlevel=1,
@@ -328,6 +400,7 @@ function nhdmrg(
                 end
 
                 spec = nhreplacebond!(
+                    Algorithm(biorthoalg),
                     psil,
                     psir,
                     b,

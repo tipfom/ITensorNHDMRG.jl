@@ -11,19 +11,19 @@ function transform(M::ITensor, leftinds, rightinds; kwargs...)
     end
     Mtensor = NDTensors.Tensor(M)
 
-    Bi, Yi, Ybari = transform(Mtensor; kwargs...)
+    Bi, Yi, Ybari, spec = transform(Mtensor; kwargs...)
 
     Yi = Yi * dag(CL)
     Ybari = Ybari * dag(CR)
 
-    return Bi, Yi, Ybari
+    return Bi, Yi, Ybari, spec
 end
 
 function transform(
     M::ITensors.Tensor{ElT,2,<:ITensors.Dense}; kwargs...
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
-    lB, lY, lYbar = transform(matrix(M); kwargs...)
+    lB, lY, lYbar, spec = transform(matrix(M); kwargs...)
     B = first(lB)
     Y = first(lY)
     Ybar = first(lYbar)
@@ -34,7 +34,7 @@ function transform(
     Ybari = itensor(Ybar, inds(M)[2], link')
     Bi = itensor(B, link, link')
 
-    return Bi, Yi, Ybari
+    return Bi, Yi, Ybari, spec
 end
 
 function transform(
@@ -50,7 +50,7 @@ function transform(
     Ms = [collect(M[b]) for b in eachnzblock(M)]
 
     # transform all the blocks
-    lB, lY, lYbar = transform(Ms...; kwargs...)
+    lB, lY, lYbar, spec = transform(Ms...; kwargs...)
 
     # find all the blocks for which the truncation reduced the size to zero
     dropblocks = Int64[]
@@ -87,11 +87,9 @@ function transform(
         ITensors.setblockdim!(l, minimum(size(lB[n])), n)
     end
 
-    r = sim(l)
-
-    indsB = (dag(l), dag(r))
-    indsY = (i1, l)
-    indsYbar = (i2, r)
+    indsB = (l', dag(l))
+    indsY = (i1, dag(l)')
+    indsYbar = (i2, l)
 
     nzblocksB = Vector{Block{2}}(undef, nnzblocksM)
     nzblocksY = Vector{Block{2}}(undef, nnzblocksM)
@@ -133,10 +131,12 @@ function transform(
         copyto!(ITensors.blockview(Ybar, blockY), lYbar[n])
     end
 
-    return itensor(B), itensor(Y), itensor(Ybar)
+    return itensor(B), itensor(Y), itensor(Ybar), spec
 end
 
-function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
+function transform(
+    Ms::Matrix{ElT}...; maxdim, mindim, cutoff
+) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
     cumdims = cumsum([size(M, 1) for M in Ms])
 
@@ -152,26 +152,23 @@ function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
         vals[(i == firstindex(Ms) ? 1 : cumdims[i - 1] + 1):cumdims[i]] = F.values
     end
 
-    if keep >= length(vals)
-        @info "trying to keep more values that matrix has dimension"
-        return [F.Schur for F in Fs],
-        [F.vectors for F in Fs],
-        [conj.(F.vectors) for F in Fs]
-    end
-
     # permute the Schur decomposition such that (0 ... keep) are in the beginning and the discarded 
     # part of M is at (keep+1 ... end)
     valsperm = sortperm(vals; by=abs2, rev=true)
     select = zeros(Bool, size(vals))
-    for i in firstindex(valsperm):(firstindex(valsperm) + keep - 1)
+    for i in firstindex(valsperm):min(firstindex(valsperm) + maxdim - 1, lastindex(valsperm))
+        abs(vals[valsperm[i]]) <= cutoff && break
         select[valsperm[i]] = true
     end
 
-    @assert sum(select) == keep
+    @assert sum(select) <= maxdim
 
     lB = Matrix[]
     lY = Matrix[]
     lYbar = Matrix[]
+
+    eigvalskept = eltype(vals)[]
+    truncerr = 0.0
 
     for (i, F) in enumerate(Fs)
         selecti = select[(i == firstindex(Ms) ? 1 : cumdims[i - 1] + 1):cumdims[i]]
@@ -185,6 +182,11 @@ function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
             continue
         end
 
+        if eltype(F) <: Real && keepi < length(F.values) && !iszero(F.Schur[keepi + 1, keepi])
+            @info "Increasing keep in block $i because of 2x2 block in the Schur decomposition"
+            keepi += 1
+        end
+        append!(eigvalskept, F.values[1:keepi])
         if keepi >= length(F.values)
             push!(lB, F.Schur)
             push!(lY, F.vectors)
@@ -192,10 +194,7 @@ function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
             continue
         end
 
-        if eltype(F) <: Real && !iszero(F.Schur[keepi + 1, keepi])
-            @info "Increasing keep in block $i because of 2x2 block in the Schur decomposition"
-            keepi += 1
-        end
+        truncerr += sum(abs, F.values[keepi+1:end])
 
         @views A = F.Schur[1:keepi, 1:keepi]
         @views B = F.Schur[(keepi + 1):end, 1:keepi]
@@ -228,5 +227,5 @@ function transform(Ms::Matrix{ElT}...; keep) where {ElT<:Union{Real,Complex}}
         push!(lYbar, conj(Ybars))
     end
 
-    return lB, lY, lYbar
+    return lB, lY, lYbar, Spectrum(eigvalskept, truncerr)
 end

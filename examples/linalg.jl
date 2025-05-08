@@ -9,10 +9,15 @@ i = Index(QN(1) => 5, QN(0) => 3)
 # i = Index(10)
 M = random_itensor(ComplexF64, dag(i)', i)
 
-keep = 3
+maxdim = 4
 
-B, Y, Ybar = transform(M, [dag(i)'], [i]; keep)
+B, Y, Ybar, spec = transform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0)
 Mt = Y * B * Ybar
+
+K = Y * replaceind(Ybar, i => i')
+# K = Ybar * noprime(Y, commonind(Y, B))
+@show inds(K)
+display(matrix(K))
 
 F = eigen(matrix(M))
 v = copy(F.values)

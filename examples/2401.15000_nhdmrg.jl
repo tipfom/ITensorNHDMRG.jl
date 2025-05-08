@@ -2,6 +2,8 @@ using ITensors, ITensorMPS
 using GLMakie
 using ITensorNHDMRG: nhdmrg
 
+include("../src/ITensorNHDMRG.jl")
+
 function hamiltonian(sites; tL, tR, V, t2, u)
     @assert length(sites) % 2 == 0
 
@@ -47,16 +49,16 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0, alg="twosided")
     H = hamiltonian(sites; tL, tR, V, t2, u)
 
     weight = 200.0
-    nsweeps = 100
+    nsweeps = 20
     maxdim = 100
     cutoff = [fill(1e-5, 6)..., fill(1e-7, 6)..., fill(1e-9, 6)..., fill(1e-10, 6)..., fill(1e-11, 4)..., 1e-12]
     noise = [fill(1e-3, 20)..., fill(1e-5, 30)..., fill(1e-7, 6)..., fill(1e-8, 6)..., fill(1e-9, 2)..., 0.0]
 
-    refinementweight = 20000.0
-    refinementnsweeps = 20
-    refinementmaxdim = 100
-    refinementcutoff = [1e-13]
-    refinementnoise = [0.0]
+    # refinementweight = 20000.0
+    # refinementnsweeps = 20
+    # refinementmaxdim = 100
+    # refinementcutoff = [1e-13]
+    # refinementnoise = [0.0]
 
 
     ψhf = [ifelse(mod(i, 2) == 0, "Occ", "Emp") for i in 1:2N]
@@ -67,7 +69,7 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0, alg="twosided")
     nexcitedstates = 1
 
     sweeps = Sweeps(nsweeps; maxdim, cutoff, noise)
-    refinementsweeps = Sweeps(refinementnsweeps; maxdim=refinementmaxdim, cutoff=refinementcutoff, noise=refinementnoise)
+    # refinementsweeps = Sweeps(refinementnsweeps; maxdim=refinementmaxdim, cutoff=refinementcutoff, noise=refinementnoise)
 
     initial_guess = random_mps(sites, ψhf; linkdims=5)
     Er0, ψr0, ψl0 = nhdmrg(H, initial_guess, initial_guess, sweeps; alg)
@@ -81,8 +83,8 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0, alg="twosided")
     for i in 1:nexcitedstates
         initial_guess = random_mps(sites, ψhf; linkdims=5)
         Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, initial_guess, initial_guess, sweeps; weight, alg)
-        @info "refining the biorthogonality"
-        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, ψri, ψli, refinementsweeps; weight=refinementweight, alg, isbiortho=true)
+        # @info "refining the biorthogonality"
+        # Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, ψri, ψli, refinementsweeps; weight=refinementweight, alg, isbiortho=true)
         Ei = ITensorMPS.inner(ψli', H, ψri) / ITensorMPS.inner(ψli, ψri)
         push!(Er, Ei)
         @show inner(ψl0, ψri)
