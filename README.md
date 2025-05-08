@@ -1,43 +1,32 @@
 # ITensorNHDMRG.jl
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://ITensor.github.io/ITensorNHDMRG.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://ITensor.github.io/ITensorNHDMRG.jl/dev/)
-[![Build Status](https://github.com/ITensor/ITensorNHDMRG.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/ITensor/ITensorNHDMRG.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/ITensor/ITensorNHDMRG.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/ITensor/ITensorNHDMRG.jl)
-[![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
-[![Aqua](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
+ITensorNHDMRG.jl is a library containing algorithms for non-hermitian density-matrix renormalization (DMRG) algorithms based on [ITensor.jl](https://github.com/ITensor/ITensors.jl) and [ITensorMPS.jl](https://github.com/ITensor/ITensors.jl).
+The object is given an operator $A$ to solve for the right- and left-eigenvalues $|x\rangle$ and $|y \rangle$ such that for an eigenvalue $\lambda$ it holds that $A |x\rangle = \lambda |x\rangle$ and $A^\dag |y\rangle = \lambda^\ast |y\rangle$. 
 
 ## Installation instructions
 
-This package resides in the `ITensor/ITensorRegistry` local registry.
-In order to install, simply add that registry through your package manager.
-This step is only required once.
-```julia
-julia> using Pkg: Pkg
+Currently, this library requires a non-standard version of [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl/pull/124). 
+This is an early work-in-progress development version and the implementation details are up to change.
 
-julia> Pkg.Registry.add(url="https://github.com/ITensor/ITensorRegistry")
-```
-or:
-```julia
-julia> Pkg.Registry.add(url="git@github.com:ITensor/ITensorRegistry.git")
-```
-if you want to use SSH credentials, which can make it so you don't have to enter your Github ursername and password when registering packages.
-
-Then, the package can be added as usual through the package manager:
-
-```julia
-julia> Pkg.add("ITensorNHDMRG")
-```
+## Features
+Non-hermitian DMRG is currently supported for systems with and without quantum numbers.
+Both one-sided Krylov iteration, i.e., the analog of solving $A |x \rangle = \lambda |x \rangle$ and $A^\dag |y\rangle = \lambda^\ast |y\rangle$ seperately, as well as two-sided Krylov iteration solving the combined problem $\langle y| A | x \rangle = \lambda \langle y|x\rangle$ [1].
+As algorithm to compute the biorthogonal representation of the MPS, we include the experimental approach `pseudoeigen` as well as the `biorthoblock` algorithm [2].
 
 ## Examples
 
-````julia
-using ITensorNHDMRG: ITensorNHDMRG
-````
+The current interface provided by `nhdmrg` is very similar to the `dmrg` function in ITensorMPS.jl.
+See the example folder.
+More elaborate examples will follow once the API is finished.
 
-Examples go here.
+## References
 
----
+For the two-sided Krylov solver we implemented 
 
-*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl).*
+[1] [Krylov-Schur-Type Restarts for the Two-Sided Arnoldi Method, Ian N. Zwaan and Michiel E. Hochstenbach](https://doi.org/10.1137/16M1078987)
 
+in [KrylovKit.jl](https://github.com/Jutho/KrylovKit.jl).
+
+The `biorthoblock` algorithm is introduced in 
+
+[2] [Density-matrix renormalization group algorithm for non-Hermitian systems, Peigeng Zhong, Wei Pan, Haiqing Lin, Xiaoqun Wang, Shijie Hu](https://arxiv.org/abs/2401.15000).
