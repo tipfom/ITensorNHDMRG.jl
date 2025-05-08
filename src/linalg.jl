@@ -229,3 +229,50 @@ function transform(
 
     return lB, lY, lYbar, Spectrum(eigvalskept, truncerr)
 end
+
+function invertitensor(A::ITensor, finv, Linds...)
+    Lis = commoninds(A, ITensors.indices(Linds...))
+    Ris = uniqueinds(A, Lis)
+
+    Cr = combiner(Ris...)
+    Cl = combiner(Lis...)
+
+    A = A * Cr * Cl
+
+    Minv = nothing
+
+    return if hasqns(A)
+        Minv = deepcopy(A)
+        for b in eachnzblock(A)
+            Amat = matrix(A[b])
+            Amatinv = finv(Amat)
+
+            Minv[b] .= adjoint(Amatinv)
+        end
+        Minv * dag(Cr) * dag(Cl)
+    else
+        M = matrix(A, combinedind(Cr), combinedind(Cl))
+        Minv = itensor(adjoint(finv(M)), combinedind(Cr), combinedind(Cl); tol=1e-8)
+        Minv * dag(Cr) * dag(Cl)
+    end
+end
+
+function LinearAlgebra.inv(A::ITensor, Linds...)
+    return invertitensor(A, inv, Linds...)
+end
+
+function LinearAlgebra.pinv(A::ITensor, Linds...; kwargs...)
+    return invertitensor(A, x -> pinv(x; kwargs...), Linds...)
+end
+
+function LinearAlgebra.inv(A::ITensor)
+    Ris = filterinds(A; plev=0)
+    Lis = Ris'
+    return LinearAlgebra.inv(A, Lis)
+end
+
+function LinearAlgebra.pinv(A::ITensor; kwargs...)
+    Ris = filterinds(A; plev=0)
+    Lis = Ris'
+    return LinearAlgebra.pinv(A, Lis; kwargs...)
+end

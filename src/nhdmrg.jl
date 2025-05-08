@@ -76,17 +76,18 @@ function nhreplacebond!(
 
     U = noprime!(U)
     U = replacetags!(U, tags(commonind(U, D)), tags(commonind(Ml[b], Ml[b + 1])))
+    Ubar = pinv(U, indsr)
     phil = noprime!(phil)
 
     sD = sum(D)
 
     normfactor = sqrt(abs(sD))
 
-    for (M, phi) in [(Ml, phil), (Mr, phir)]
+    for (M, phi, U, U2) in [(Ml, phil, U, Ubar), (Mr, phir, Ubar, U)]
         L, R = if ortho == "left"
-            U, phi * dag(U) / (sign(sD) * normfactor)
+            U, phi * dag(U2) / (sign(sD) * normfactor)
         elseif ortho == "right"
-            phi * dag(U) / normfactor, U
+            phi * dag(U2) / normfactor, U
         end
         M[b] = L
         M[b + 1] = R
@@ -322,7 +323,7 @@ function nhdmrg(
     psil0::MPS,
     sweeps::Sweeps;
     alg="twosided",
-    biorthoalg="biorthoblock",
+    biorthoalg="pseudoeigen",
     isbiortho=false,
     observer=NoObserver(),
     outputlevel=1,
