@@ -35,86 +35,32 @@ function nhdmrg(
     return nhdmrg(PH, psir0, psil0, sweeps; kwargs...)
 end
 
-function nhreplacebond!(
-    ::Algorithm"pseudoeigen",
-    Ml::MPS,
-    Mr::MPS,
-    b::Int,
-    phil::ITensor,
-    phir::ITensor;
-    ortho=nothing,
-    eigen_perturbation=nothing,
-    # Decomposition kwargs
-    mindim=nothing,
-    maxdim=nothing,
-    cutoff=nothing,
-)
-    ortho = NDTensors.replace_nothing(ortho, "left")
-
-    if ortho != "left" && ortho != "right"
-        error(
-            "In replacebond!, got ortho = $ortho, only currently supports `left` and `right`.",
-        )
-    end
-
-    leftindsl = if ortho == "left"
-        commoninds(Ml[b], phil)
-    else
-        commoninds(Ml[b + 1], phil)
-    end
-    replaceinds!(phil, leftindsl, leftindsl')
-
-    # compute reduced density matrix and apply perturbation
-    rho = phil * dag(phir)
-    if !isnothing(eigen_perturbation)
-        rho += eigen_perturbation
-    end
-
-    indsl = commoninds(rho, phil)
-    indsr = commoninds(rho, phir)
-    D, U, spec = eigen(rho, indsl, indsr; mindim, maxdim, cutoff, ishermitian=true)
-
-    U = noprime!(U)
-    U = replacetags!(U, tags(commonind(U, D)), tags(commonind(Ml[b], Ml[b + 1])))
+function decomposerho(::Algorithm"pseudoeigen", rho, indsl, indsr, targettags; kwargs...)
+    D, U, spec = eigen(rho, indsl, indsr; ishermitian=false, kwargs...)
+    
     Ubar = pinv(U, indsr)
-    phil = noprime!(phil)
+    U = noprime!(U)
+    Ubar = noprime!(Ubar)
+    
+    return U, Ubar, spec
+end
 
-    sD = sum(D)
-
-    normfactor = sqrt(abs(sD))
-
-    for (M, phi, U, U2) in [(Ml, phil, U, Ubar), (Mr, phir, Ubar, U)]
-        L, R = if ortho == "left"
-            U, phi * dag(U2) / (sign(sD) * normfactor)
-        elseif ortho == "right"
-            phi * dag(U2) / normfactor, U
-        end
-        M[b] = L
-        M[b + 1] = R
-
-        if ortho == "left"
-            ITensorMPS.leftlim(M) == b - 1 &&
-                ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) + 1)
-            ITensorMPS.rightlim(M) == b + 1 &&
-                ITensorMPS.setrightlim!(M, ITensorMPS.rightlim(M) + 1)
-        elseif ortho == "right"
-            ITensorMPS.leftlim(M) == b &&
-                ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) - 1)
-            ITensorMPS.rightlim(M) == b + 2 &&
-                ITensorMPS.setrightlim!(M, ITensorMPS.rightlim(M) - 1)
-        end
-    end
-
-    return spec
+function decomposerho(::Algorithm"biorthoblock", rho, indsl, indsr, targettags; kwargs...)
+    B, Y, Ybar, spec = transform(rho, indsl, indsr; kwargs...)
+    noprime!(Y)
+    noprime!(Ybar)
+    Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
+    Ybar = replacetags!(Ybar, tags(commonind(Ybar, B)), targettags)
+    return Y, dag(Ybar), spec
 end
 
 function nhreplacebond!(
-    ::Algorithm"biorthoblock",
     Ml::MPS,
     Mr::MPS,
     b::Int,
     phil::ITensor,
-    phir::ITensor;
+    phir::ITensor,
+    alg;
     ortho=nothing,
     eigen_perturbation=nothing,
     # Decomposition kwargs
@@ -145,15 +91,15 @@ function nhreplacebond!(
 
     indsl = commoninds(rho, phil)
     indsr = commoninds(rho, phir)
-    B, Y, Ybar, spec = transform(rho, indsl, indsr; maxdim, mindim, cutoff)
+    U, Ubar, spec = decomposerho(Algorithm(alg), rho, indsl, indsr, tags(commonind(Ml[b], Ml[b + 1])); mindim, maxdim, cutoff)
 
-    noprime!(Y)
-    noprime!(Ybar)
-    replaceinds!(phil, leftindsl', leftindsl)
+    # replaceinds!(phil, leftindsl', leftindsl)
+    noprime!(phil)
 
-    normfactor = sqrt(sum(abs, eigs(spec)))
+    sD = sum(eigs(spec))
+    normfactor = sqrt(abs(sD))
 
-    for (M, phi, U, U2) in [(Ml, phil, Y, dag(Ybar)), (Mr, phir, dag(Ybar), Y)]
+    for (M, phi, U, U2) in [(Ml, phil, U, Ubar), (Mr, phir, Ubar, U)]
         L, R = if ortho == "left"
             U, phi * dag(U2)  / normfactor
         elseif ortho == "right"
@@ -401,16 +347,16 @@ function nhdmrg(
                 end
 
                 spec = nhreplacebond!(
-                    Algorithm(biorthoalg),
                     psil,
                     psir,
                     b,
                     v,
-                    w;
+                    w,
+                    biorthoalg;
                     ortho,
                     eigen_perturbation=drho,
                     maxdim=maxdim(sweeps, sw),
-                    mindim=1,
+                    mindim=mindim(sweeps, sw),
                     cutoff=cutoff(sweeps, sw),
                 )
 
