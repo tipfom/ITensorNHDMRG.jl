@@ -1,4 +1,4 @@
-function transform(M::ITensor, leftinds, rightinds; kwargs...)
+function transform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...)
     CL = combiner(leftinds...)
     CR = combiner(rightinds...)
 
@@ -11,12 +11,21 @@ function transform(M::ITensor, leftinds, rightinds; kwargs...)
     end
     Mtensor = NDTensors.Tensor(M)
 
-    Bi, Yi, Ybari, spec = transform(Mtensor; kwargs...)
+    if checknormal && isapprox(Mtensor * dag(Mtensor), dag(Mtensor) * Mtensor)
+        # This is Technique 1 in the paper
+        @info "using normality condition"
+        K = (Mtensor + dag(Mtensor)) / 2
+        D, U, spec = eigen(K; kwargs...)
 
-    Yi = Yi * dag(CL)
-    Ybari = Ybari * dag(CR)
+        return D, U, dag(U), spec
+    else
+        Bi, Yi, Ybari, spec = transform(Mtensor; kwargs...)
 
-    return Bi, Yi, Ybari, spec
+        Yi = Yi * dag(CL)
+        Ybari = Ybari * dag(CR)
+
+        return Bi, Yi, Ybari, spec
+    end
 end
 
 function transform(
@@ -135,7 +144,12 @@ function transform(
 end
 
 function transform(
-    Ms::Matrix{ElT}...; maxdim, mindim, cutoff
+    Ms::Matrix{ElT}...;
+    maxdim,
+    mindim,
+    cutoff,
+    biorthonormalize=true,
+    unitarize=true,
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
     cumdims = cumsum([size(M, 1) for M in Ms])
@@ -156,7 +170,8 @@ function transform(
     # part of M is at (keep+1 ... end)
     valsperm = sortperm(vals; by=abs2, rev=true)
     select = zeros(Bool, size(vals))
-    for i in firstindex(valsperm):min(firstindex(valsperm) + maxdim - 1, lastindex(valsperm))
+    for i in
+        firstindex(valsperm):min(firstindex(valsperm) + maxdim - 1, lastindex(valsperm))
         abs(vals[valsperm[i]]) <= cutoff && break
         select[valsperm[i]] = true
     end
@@ -182,7 +197,9 @@ function transform(
             continue
         end
 
-        if eltype(F) <: Real && keepi < length(F.values) && !iszero(F.Schur[keepi + 1, keepi])
+        if eltype(F) <: Real &&
+            keepi < length(F.values) &&
+            !iszero(F.Schur[keepi + 1, keepi])
             @info "Increasing keep in block $i because of 2x2 block in the Schur decomposition"
             keepi += 1
         end
@@ -194,7 +211,7 @@ function transform(
             continue
         end
 
-        truncerr += sum(abs, F.values[keepi+1:end])
+        truncerr += sum(abs, F.values[(keepi + 1):end])
 
         @views A = F.Schur[1:keepi, 1:keepi]
         @views B = F.Schur[(keepi + 1):end, 1:keepi]
@@ -225,6 +242,44 @@ function transform(
         push!(lB, A)
         push!(lY, Ys)
         push!(lYbar, conj(Ybars))
+    end
+
+    if biorthonormalize
+        for i in eachindex(lB)
+            size(lB[i], 1) == 0 && continue
+            # Gram-Schmidt algorithm on the columns of Y and Ybar
+            # This is Technique 3 in the paper
+
+            Y = lY[i]
+            Ybar = lYbar[i]
+
+            for k in axes(Y, 2)
+                for j in firstindex(Y, 1):(k - 1)
+                    # this should always be one
+                    n = dot(Ybar[:, j], Y[:, j]) 
+                    @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
+
+                    Y[:, k] -= (dot(Y[:, k], Ybar[:, j]) / n) * Y[:, j]
+                    Ybar[:, k] -= (dot(Ybar[:, k], Y[:, j]) / n) * Ybar[:, j]
+                end
+
+                # normalize the remainder 
+                n = sqrt(dot(Ybar[:, k], Y[:, k]))
+                Y[:, k] ./= n
+                Ybar[:, k] ./= conj(n)
+            end
+        end
+    end
+
+    if unitarize
+        for i in eachindex(lB)
+            size(lB[i], 1) == 0 && continue
+            # Unitarize both Y and Ybar
+            # This is Technique 4 in the paper
+            F = svd(lY[i])
+            lY[i] = F.U * F.Vt
+            lYbar[i] = conj(lY[i])
+        end
     end
 
     return lB, lY, lYbar, Spectrum(eigvalskept, truncerr)

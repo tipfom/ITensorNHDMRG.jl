@@ -35,14 +35,20 @@ function nhdmrg(
     return nhdmrg(PH, psir0, psil0, sweeps; kwargs...)
 end
 
-function decomposerho(::Algorithm"pseudoeigen", rho, indsl, indsr, targettags; kwargs...)
-    D, U, spec = eigen(rho, indsl, indsr; ishermitian=false, kwargs...)
-    
-    Ubar = pinv(U, indsr)
-    U = noprime!(U)
-    Ubar = noprime!(Ubar)
-    
-    return U, Ubar, spec
+function decomposerho(
+    ::Algorithm"pseudoeigen", rho, indsl, indsr, targettags; ishermitian=false, kwargs...
+)
+    D, U, spec = eigen(rho, indsl, indsr; ishermitian, kwargs...)
+
+    if ishermitian
+        U = noprime!(U)
+        return U, U, spec
+    else
+        Ubar = pinv(U, indsr)
+        U = noprime!(U)
+        Ubar = noprime!(Ubar)
+        return U, Ubar, spec
+    end
 end
 
 function decomposerho(::Algorithm"biorthoblock", rho, indsl, indsr, targettags; kwargs...)
@@ -91,7 +97,16 @@ function nhreplacebond!(
 
     indsl = commoninds(rho, phil)
     indsr = commoninds(rho, phir)
-    U, Ubar, spec = decomposerho(Algorithm(alg), rho, indsl, indsr, tags(commonind(Ml[b], Ml[b + 1])); mindim, maxdim, cutoff)
+    U, Ubar, spec = decomposerho(
+        Algorithm(alg),
+        rho,
+        indsl,
+        indsr,
+        tags(commonind(Ml[b], Ml[b + 1]));
+        mindim,
+        maxdim,
+        cutoff,
+    )
 
     # replaceinds!(phil, leftindsl', leftindsl)
     noprime!(phil)
@@ -101,7 +116,7 @@ function nhreplacebond!(
 
     for (M, phi, U, U2) in [(Ml, phil, U, Ubar), (Mr, phir, Ubar, U)]
         L, R = if ortho == "left"
-            U, phi * dag(U2)  / normfactor
+            U, phi * dag(U2) / normfactor
         elseif ortho == "right"
             phi * dag(U2) / normfactor, U
         end
@@ -246,7 +261,7 @@ function biorthogonalize!(psir, psil; mindim=nothing, maxdim=10, cutoff=nothing)
 
         Er = psir[i] * prime(dag(U), "Link")
         M[i - 1] = M[i - 1] * Er
-        
+
         El = psil[i] * dag(U)
         M[i - 1] = M[i - 1] * dag(El)
 
@@ -263,20 +278,21 @@ function biorthogonalize!(psir, psil; mindim=nothing, maxdim=10, cutoff=nothing)
 end
 
 # current options for alg are "twosided" and "onesided" 
+# current options for biorthoalg are "pseudoeigen" and "biorthoblock" 
 function nhdmrg(
     PH,
     psir0::MPS,
     psil0::MPS,
     sweeps::Sweeps;
     alg="twosided",
-    biorthoalg="pseudoeigen",
+    biorthoalg="biorthoblock",
     isbiortho=false,
     observer=NoObserver(),
     outputlevel=1,
     # eigsolve kwargs
     eigsolve_tol=1e-14,
-    eigsolve_krylovdim=3,
-    eigsolve_maxiter=3,
+    eigsolve_krylovdim=6,
+    eigsolve_maxiter=1,
     eigsolve_verbosity=0,
     eigsolve_which_eigenvalue=:SR,
 )
@@ -285,6 +301,8 @@ function nhdmrg(
             "`dmrg` currently does not support system sizes of 1. You can diagonalize the MPO tensor directly with tools like `LinearAlgebra.eigen`, `KrylovKit.eigsolve`, etc.",
         )
     end
+
+    @info "running eigenvalue alg $alg with biortho alg $biorthoalg"
 
     @debug_check begin
         # Debug level checks
@@ -296,7 +314,7 @@ function nhdmrg(
     psir = deepcopy(psir0)
     psil = deepcopy(psil0)
     N = length(psir0)
-    
+
     if !isbiortho
         psir, psil = biorthogonalize!(psir, psil)
     end
