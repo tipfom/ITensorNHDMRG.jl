@@ -36,28 +36,71 @@ function nhdmrg(
 end
 
 function decomposerho(
-    ::Algorithm"pseudoeigen", rho, indsl, indsr, targettags; ishermitian=false, kwargs...
+    ::Algorithm"pseudoeigen",
+    phil,
+    phir,
+    drho,
+    lindsl,
+    lindsr,
+    targettags;
+    ishermitian=false,
+    kwargs...,
 )
-    D, U, spec = eigen(rho, indsl, indsr; ishermitian, kwargs...)
+    # compute reduced density matrix and apply perturbation
+    replaceinds!(phil, lindsl, lindsl')
+    rho = phil * dag(phir)
+    if !isnothing(drho)
+        rho += drho
+    end
+
+    D, U, spec = eigen(rho, lindsl', dag(lindsr); ishermitian, kwargs...)
 
     if ishermitian
         U = noprime!(U)
         return U, U, spec
     else
-        Ubar = pinv(U, indsr)
+        Ubar = pinv(U, lindsr)
         U = noprime!(U)
         Ubar = noprime!(Ubar)
         return U, Ubar, spec
     end
 end
 
-function decomposerho(::Algorithm"biorthoblock", rho, indsl, indsr, targettags; kwargs...)
-    B, Y, Ybar, spec = transform(rho, indsl, indsr; kwargs...)
+function decomposerho(
+    ::Algorithm"biorthoblock", phil, phir, drho, lindsl, lindsr, targettags; kwargs...
+)
+    # compute reduced density matrix and apply perturbation
+    replaceinds!(phil, lindsl, lindsl')
+    rho = phil * dag(phir)
+    if !isnothing(drho)
+        rho += drho
+    end
+
+    B, Y, Ybar, spec = transform(rho, lindsl', dag(lindsr); kwargs...)
     noprime!(Y)
     noprime!(Ybar)
     Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
     Ybar = replacetags!(Ybar, tags(commonind(Ybar, B)), targettags)
     return Y, dag(Ybar), spec
+end
+
+function decomposerho(
+    ::Algorithm"lrdensity", phil, phir, drho, lindsl, lindsr, targettags; kwargs...
+)
+    # Phys. Rev. B 105, 205125 
+    # https://doi.org/10.1103/PhysRevB.105.205125
+    # compute reduced density matrix and apply perturbation
+    phir2 = replaceinds(phir, lindsr, lindsr')
+    phil2 = replaceinds(phil, lindsl, lindsl')
+
+    rho = (phil2 * dag(phil) + phir2 * dag(phir)) / 2
+    if !isnothing(drho)
+        rho += drho
+    end
+
+    D, U, spec = eigen(rho, lindsl', dag(lindsl); ishermitian=true, kwargs...)
+    U = noprime!(U)
+    return U, U, spec
 end
 
 function nhreplacebond!(
@@ -73,6 +116,7 @@ function nhreplacebond!(
     mindim=nothing,
     maxdim=nothing,
     cutoff=nothing,
+    kwargs...,
 )
     ortho = NDTensors.replace_nothing(ortho, "left")
 
@@ -87,25 +131,24 @@ function nhreplacebond!(
     else
         commoninds(Ml[b + 1], phil)
     end
-    replaceinds!(phil, leftindsl, leftindsl')
-
-    # compute reduced density matrix and apply perturbation
-    rho = phil * dag(phir)
-    if !isnothing(eigen_perturbation)
-        rho += eigen_perturbation
+    leftindsr = if ortho == "left"
+        commoninds(Mr[b], phir)
+    else
+        commoninds(Mr[b + 1], phir)
     end
 
-    indsl = commoninds(rho, phil)
-    indsr = commoninds(rho, phir)
     U, Ubar, spec = decomposerho(
         Algorithm(alg),
-        rho,
-        indsl,
-        indsr,
+        phil,
+        phir,
+        eigen_perturbation,
+        leftindsl,
+        leftindsr,
         tags(commonind(Ml[b], Ml[b + 1]));
         mindim,
         maxdim,
         cutoff,
+        kwargs...,
     )
 
     # replaceinds!(phil, leftindsl', leftindsl)
@@ -232,7 +275,7 @@ function eigproblemsolver!(
     return first(vals), noprime(first(vecsH)), noprime(first(vecs))
 end
 
-function biorthogonalize!(psir, psil; mindim=nothing, maxdim=10, cutoff=nothing)
+function biorthogonalize!(psir, psil, alg; mindim=nothing, maxdim=10, cutoff=1e-12)
     @assert siteinds(psir) == siteinds(psil) "both MPS need to share the same basis"
 
     sites = siteinds(psir)
@@ -254,21 +297,27 @@ function biorthogonalize!(psir, psil; mindim=nothing, maxdim=10, cutoff=nothing)
         push!(M, Mi)
     end
 
-    for i in lastindex(sites):-1:2
-        D, U = eigen(M[i]; ishermitian=true, mindim, maxdim, cutoff)
+    noprime!(psir)
 
-        replacetags!(U, "Link,eigen" => "Link,l=$i")
+    for i in (lastindex(sites) - 1):-1:1
+        phil = psil[i] * psil[i + 1]
+        phir = setprime(psir[i], 1) * setprime(psir[i + 1], 1)
 
-        Er = psir[i] * prime(dag(U), "Link")
-        M[i - 1] = M[i - 1] * Er
+        if i > 1
+            phir *= M[i - 1] * delta(prime(dag(sites[i - 1])), sites[i - 1])
+        end
 
-        El = psil[i] * dag(U)
-        M[i - 1] = M[i - 1] * dag(El)
+        phir = noprime(phir)
 
-        psir[i - 1] *= Er
-        psil[i - 1] *= El
-        psir[i] = prime(U, "Link")
-        psil[i] = U
+        nhreplacebond!(
+            psil, psir, i, phil, phir, alg; ortho="right", mindim, maxdim, cutoff
+        )
+    end
+
+    X = dag(psil[lastindex(sites)]) * prime(psir[lastindex(sites)], "Link")
+    for i in (lastindex(sites) - 1):-1:1
+        display(matrix(X))
+        X *= dag(psil[i]) * prime(psir[i], "Link")
     end
 
     noprime!(psil)
@@ -277,24 +326,96 @@ function biorthogonalize!(psir, psil; mindim=nothing, maxdim=10, cutoff=nothing)
     return psir, psil
 end
 
-# current options for alg are "twosided" and "onesided" 
-# current options for biorthoalg are "pseudoeigen" and "biorthoblock" 
+"""
+    nhdmrg(H::MPO, psir0::MPS, psil0::MPS, sweeps::Sweeps; kwargs...)
+
+Use a non-Hermitian variant of the density matrix renormalization group 
+(NH-DMRG) algorithm to optimize the matrix product states (MPS) 
+such that they are the left- and right-eigenvector of lowest eigenvalue 
+of a non-Hermitian matrix `H`, represented as a matrix product operator (MPO).
+
+    nhdmrg(H::MPO, Msl::Vector{MPS}, Msr::Vector{MPS}, psir0::MPS, psil0::MPS, sweeps::Sweeps; weight=1.0, kwargs...)
+    
+Use a non-Hermitian variant of the density matrix renormalization group 
+(NH-DMRG) algorithm to optimize the matrix product states (MPS) 
+such that they are the left- and right-eigenvector of lowest eigenvalue 
+of a non-Hermitian matrix `H`, subject to the constraint that the MPS
+are orthogonal to each of the left- and right-MPS provided in the Vector 
+`Msl` and `Msr`. The orthogonality constraint is approximately enforced by
+adding to `H` terms of the form `w|Mr1><Ml1| + w|Mr2><Ml2| + ...` where 
+`Mls=[Ml1, Ml2, ...]`, `Mrs=[Mr1, Mr2, ...]` and `w` is the "weight" parameter, 
+which can be adjusted through the optional `weight` keyword argument.
+
+!!! note
+    `nhdmrg` will report the energy of the operator
+    `H + w|Mr1><Ml1| + w|Mr2><Ml2| + ...`, not the operator `H`.
+    If you want the expectation value of the MPS eigenstate
+    with respect to just `H`, you can compute it yourself with
+    an observer or after DMRG is run with `inner(psil', H, psir)`.
+
+The MPS `psil0` and `psir0` is used to initialize the MPS to be optimized.
+
+The number of sweeps and accuracy parameters can be passed through a 
+`Sweeps` object.
+
+The NH-DMRG algorithm allows choosing both the eigenvalue solver by passing 
+the `alg` keyword and the truncation algorithm by passing the `biorthoalg`
+keyword. The eigenvalue algorithm `alg` may be `onesided`, such that the for each 
+block the eigenvalue problem ``A |x> = λ |x>`` and ``A† |y> = λ* |y>`` are 
+solved, or `twosided`, such that ``<y| A |x> = λ <y|x>`` are solved simultaneously
+using a two-sided Krylov approach [1]. The truncation algorithm `biorthoalg` currently 
+supports the biorthogonal block method `biorthoblock` [2] and the left-right density 
+matrix method `lrdensity` [3].
+
+[1] https://doi.org/10.1137/16M1078987
+[2] https://doi.org/10.48550/arXiv.2401.15000
+[3] https://doi.org/10.1103/PhysRevB.105.205125
+
+Returns:
+
+  - `energy::Number` - eigenvalue of the optimized MPS
+  - `psil::MPS` - optimized left MPS
+  - `psir::MPS` - optimized right MPS
+
+Optional keyword arguments:
+
+  - `alg::String = "twosided"` - local eigenvalue algorithm, either `"onesided"` or `"twosided"`
+  - `biorthoalg::String = "biorthoblock"` - orthogonalization algorithm, eiter `"biorthoblock"` 
+     or `"lrdensity"`
+  - `isbiortho::Bool=false` - if `true` the input MPS are not biorthogonalized before starting 
+     the sweeps 
+  - `eigsolve_krylovdim::Int = 3` - maximum dimension of Krylov space used to
+     locally solve the eigenvalue problem. Try setting to a higher value if
+     convergence is slow or the Hamiltonian is close to a critical point. [^krylovkit]
+  - `eigsolve_tol::Number = 1e-14` - Krylov eigensolver tolerance. [^krylovkit]
+  - `eigsolve_maxiter::Int = 1` - number of times the Krylov subspace can be
+     rebuilt. [^krylovkit]
+  - `eigsolve_verbosity::Int = 0` - verbosity level of the Krylov solver.
+     Warning: enabling this will lead to a lot of outputs to the terminal. [^krylovkit]
+  - `outputlevel::Int = 1` - larger outputlevel values make DMRG print more
+     information and 0 means no output.
+  - `observer` - object implementing the [Observer](@ref observer) interface
+     which can perform measurements and stop DMRG early.
+  - `biorthokwargs` - additional kwargs for the biorthogonalization routine, 
+     see `decomposerho`.
+"""
 function nhdmrg(
-    PH,
+    PH::Union{ProjNHMPO,ProjNHMPO_MPS,ProjNHMPS},
     psir0::MPS,
     psil0::MPS,
     sweeps::Sweeps;
     alg="twosided",
     biorthoalg="biorthoblock",
-    isbiortho=false,
+    isbiortho::Bool=false,
     observer=NoObserver(),
     outputlevel=1,
     # eigsolve kwargs
     eigsolve_tol=1e-14,
-    eigsolve_krylovdim=6,
+    eigsolve_krylovdim=3,
     eigsolve_maxiter=1,
     eigsolve_verbosity=0,
     eigsolve_which_eigenvalue=:SR,
+    biorthokwargs...,
 )
     if length(psir0) == 1
         error(
@@ -316,7 +437,15 @@ function nhdmrg(
     N = length(psir0)
 
     if !isbiortho
-        psir, psil = biorthogonalize!(psir, psil)
+        psir, psil = biorthogonalize!(
+            psir,
+            psil,
+            biorthoalg;
+            maxdim=maxdim(sweeps, 1),
+            mindim=mindim(sweeps, 1),
+            cutoff=cutoff(sweeps, 1),
+            biorthokwargs...,
+        )
     end
 
     PH = ITensorMPS.position!(PH, psil, psir, 1)
@@ -376,6 +505,7 @@ function nhdmrg(
                     maxdim=maxdim(sweeps, sw),
                     mindim=mindim(sweeps, sw),
                     cutoff=cutoff(sweeps, sw),
+                    biorthokwargs...,
                 )
 
                 maxtruncerr = max(maxtruncerr, spec.truncerr)

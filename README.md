@@ -10,7 +10,7 @@ This is an early work-in-progress development version and the implementation det
 
 ## Features
 Non-hermitian DMRG is currently supported for systems with and without quantum numbers.
-Both one-sided Krylov iteration, i.e., the analog of solving $A |x \rangle = \lambda |x \rangle$ and $A^\dag |y\rangle = \lambda^\ast |y\rangle$ seperately, as well as two-sided Krylov iteration solving the combined problem $\langle y| A | x \rangle = \lambda \langle y|x\rangle$ [1].
+Both one-sided Krylov iteration, i.e., the analog of solving $A |x \rangle = \lambda |x \rangle$ and $A^\dagger |y\rangle = \lambda^\ast |y\rangle$ seperately, as well as two-sided Krylov iteration solving the combined problem $\langle y| A | x \rangle = \lambda \langle y|x\rangle$ [1].
 As algorithm to compute the biorthogonal representation of the MPS, we include the experimental approach `pseudoeigen` as well as the `biorthoblock` algorithm [2].
 
 ## Examples
