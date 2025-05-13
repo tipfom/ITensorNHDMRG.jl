@@ -25,6 +25,14 @@ function parse_commandline()
         help = "weight to enforce the biorthogonality constraint w.r.t. eigenstates already found"
         arg_type = Float64
         default = 20.0
+        "--offset"
+        help = "energy offset of the Hamiltonian"
+        arg_type = Float64 
+        default = 0.0
+        "--scale"
+        help = "energy rescaling of the Hamiltonian"
+        arg_type = Float64 
+        default = 1.0
         "--filename"
         help = "file to export results to"
         arg_type = String
@@ -66,7 +74,7 @@ function hamiltonian(sites; tL, tR, V, t2, u, offset=nothing, scale=one(tL))
         end
     end
 
-    if !isnothing(offset)
+    if !isnothing(offset) && !iszero(offset)
         for l in 1:N
             H += -offset / N, "Id", l
         end
@@ -86,6 +94,8 @@ function gap(
     biorthoalg="lrdensity",
     nexcitedstates=1,
     weight=20.0,
+    offset=nothing,
+    scale=one(t1)
 )
     sites = siteinds("Fermion", 2N; conserve_qns=true)
     tL = t1 - γ
@@ -93,7 +103,7 @@ function gap(
     # half filling
 
     @info "starting constructing the Hamiltonian"
-    H = hamiltonian(sites; tL, tR, V, t2, u)
+    H = hamiltonian(sites; tL, tR, V, t2, u, offset, scale)
 
     nsweeps = 100
     maxdim = 100
@@ -179,8 +189,10 @@ function main()
     alg = args["alg"]
     biorthoalg = args["biorthoalg"]
     weight = args["weight"]
+    offset = args["offset"]
+    scale = args["scale"]
 
-    E, overlaps = gap(N; alg, biorthoalg, weight)
+    E, overlaps = gap(N; alg, biorthoalg, weight, offset, scale)
 
     h5open(args["filename"], "w") do f
         write(f, "E", E)
