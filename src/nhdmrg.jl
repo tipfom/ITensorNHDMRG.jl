@@ -4,7 +4,7 @@ using KrylovKit: bieigsolve, eigsolve, BiArnoldi
 using Printf: @printf
 using LinearAlgebra
 
-function nhdmrg(H::MPO, psir0::MPS, psil0::MPS, sweeps::Sweeps; kwargs...)
+function nhdmrg(H::MPO, psil0::MPS, psir0::MPS, sweeps::Sweeps; kwargs...)
     check_hascommoninds(siteinds, H, psir0)
     check_hascommoninds(siteinds, H, psil0')
     check_hascommoninds(siteinds, psir0, psil0)
@@ -12,15 +12,15 @@ function nhdmrg(H::MPO, psir0::MPS, psil0::MPS, sweeps::Sweeps; kwargs...)
     # and minimize permutations
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO(H)
-    return nhdmrg(PH, psir0, psil0, sweeps; kwargs...)
+    return nhdmrg(PH, psil0, psir0, sweeps; kwargs...)
 end
 
 function nhdmrg(
     H::MPO,
     Msl::Vector{MPS},
     Msr::Vector{MPS},
-    psir0::MPS,
     psil0::MPS,
+    psir0::MPS,
     sweeps::Sweeps;
     weight=true,
     kwargs...,
@@ -32,7 +32,7 @@ function nhdmrg(
     # and minimize permutations
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO_MPS(H, Msl, Msr; weight)
-    return nhdmrg(PH, psir0, psil0, sweeps; kwargs...)
+    return nhdmrg(PH, psil0, psir0, sweeps; kwargs...)
 end
 
 function decomposerho(
@@ -87,6 +87,8 @@ end
 function decomposerho(
     ::Algorithm"lrdensity", phil, phir, drho, lindsl, lindsr, targettags; kwargs...
 )
+    # TODO: assert that phil and phir have the same inds
+
     # Phys. Rev. B 105, 205125 
     # https://doi.org/10.1103/PhysRevB.105.205125
     # compute reduced density matrix and apply perturbation
@@ -109,7 +111,8 @@ function nhreplacebond!(
     b::Int,
     phil::ITensor,
     phir::ITensor,
-    alg;
+    alg,
+    idright=nothing;
     ortho=nothing,
     eigen_perturbation=nothing,
     # Decomposition kwargs
@@ -137,10 +140,16 @@ function nhreplacebond!(
         commoninds(Mr[b + 1], phir)
     end
 
+    phirdeco = copy(phir)
+    if !isnothing(idright)
+        phirdeco = apply(idright, phirdeco)
+        setprime!(phirdeco, 0, commonind(phirdeco, idright))
+    end
+
     U, Ubar, spec = decomposerho(
         Algorithm(alg),
         phil,
-        phir,
+        phirdeco,
         eigen_perturbation,
         leftindsl,
         leftindsr,
@@ -192,6 +201,7 @@ function eigproblemsolver!(
     eigsolve_maxiter,
     eigsolve_verbosity,
     eigsolve_which_eigenvalue,
+    max_krylovdim=1_000,
 )
     fA = x -> productr(PH, x)
     fAH = x -> productl(PH, x)
@@ -214,6 +224,11 @@ function eigproblemsolver!(
         # did not converge, retrying 
         eigsolve_maxiter = div(5eigsolve_maxiter, 3)
         eigsolve_krylovdim = div(5eigsolve_krylovdim, 3)
+
+        if eigsolve_krylovdim > max_krylovdim
+            error("Did not converge")
+        end
+
         @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
 
         vals, V, W, info = bieigsolve(
@@ -275,8 +290,10 @@ function eigproblemsolver!(
     return first(vals), noprime(first(vecsH)), noprime(first(vecs))
 end
 
-function biorthogonalize!(psir, psil, alg; mindim=nothing, maxdim=10, cutoff=1e-12)
+function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=nothing)
     @assert siteinds(psir) == siteinds(psil) "both MPS need to share the same basis"
+
+    @assert inner(psil, psir) >= sqrt(cutoff) "The initial vectors are almost orthogonal, overlap is $(inner(psil, psir))"
 
     sites = siteinds(psir)
 
@@ -303,14 +320,16 @@ function biorthogonalize!(psir, psil, alg; mindim=nothing, maxdim=10, cutoff=1e-
         phil = psil[i] * psil[i + 1]
         phir = setprime(psir[i], 1) * setprime(psir[i + 1], 1)
 
+        idright = nothing
         if i > 1
-            phir *= M[i - 1] * delta(prime(dag(sites[i - 1])), sites[i - 1])
+            idright = M[i - 1] * delta(prime(dag(sites[i - 1])), sites[i - 1])
+            swapprime!(idright, 0 => 1)
         end
 
         phir = noprime(phir)
 
         nhreplacebond!(
-            psil, psir, i, phil, phir, alg; ortho="right", mindim, maxdim, cutoff
+            psil, psir, i, phil, phir, alg, idright; ortho="right", mindim, maxdim, cutoff
         )
     end
 
@@ -401,8 +420,8 @@ Optional keyword arguments:
 """
 function nhdmrg(
     PH::Union{ProjNHMPO,ProjNHMPO_MPS,ProjNHMPS},
-    psir0::MPS,
     psil0::MPS,
+    psir0::MPS,
     sweeps::Sweeps;
     alg="twosided",
     biorthoalg="biorthoblock",
@@ -437,9 +456,9 @@ function nhdmrg(
     N = length(psir0)
 
     if !isbiortho
-        psir, psil = biorthogonalize!(
-            psir,
+        psil, psir = biorthogonalize!(
             psil,
+            psir,
             biorthoalg;
             maxdim=maxdim(sweeps, 1),
             mindim=mindim(sweeps, 1),

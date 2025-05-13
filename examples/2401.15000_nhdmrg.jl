@@ -72,7 +72,7 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0, alg="twosided")
     # refinementsweeps = Sweeps(refinementnsweeps; maxdim=refinementmaxdim, cutoff=refinementcutoff, noise=refinementnoise)
 
     initial_guess = random_mps(sites, ψhf; linkdims=5)
-    Er0, ψr0, ψl0 = nhdmrg(H, initial_guess, initial_guess, sweeps; alg)
+    Er0, ψr0, ψl0 = nhdmrg(H, initial_guess + random_mps(sites, ψhf; linkdims=5), initial_guess + random_mps(sites, ψhf; linkdims=5), sweeps; alg)
     @info "Found groundstate with energy $Er0"
     @show E0 = ITensorMPS.inner(ψl0', H, ψr0) / ITensorMPS.inner(ψl0, ψr0)
     @show ITensorMPS.inner(ψl0, ψr0)
@@ -82,7 +82,7 @@ function gap(N; t1=1.2, γ=0.1, V=7.0, t2=1.0, u=0.0, alg="twosided")
     Er = [Er0]
     for i in 1:nexcitedstates
         initial_guess = random_mps(sites, ψhf; linkdims=5)
-        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, initial_guess, initial_guess, sweeps; weight, alg)
+        Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, initial_guess + random_mps(sites, ψhf; linkdims=5), initial_guess + random_mps(sites, ψhf; linkdims=5), sweeps; weight, alg)
         # @info "refining the biorthogonality"
         # Eri, ψri, ψli = nhdmrg(H, Ψl, Ψr, ψri, ψli, refinementsweeps; weight=refinementweight, alg, isbiortho=true)
         Ei = ITensorMPS.inner(ψli', H, ψri) / ITensorMPS.inner(ψli, ψri)

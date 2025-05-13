@@ -1,11 +1,33 @@
 function transform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...)
-    CL = combiner(leftinds...)
-    CR = combiner(rightinds...)
+    # Linds, Rinds may not have the correct directions
+    Lis = ITensors.indices(leftinds)
+    Ris = ITensors.indices(rightinds)
+
+    # Ensure the indices have the correct directions,
+    # QNs, etc.
+    # First grab the indices in A, then permute them
+    # correctly.
+    Lis = permute(commoninds(M, Lis), Lis)
+    Ris = permute(commoninds(M, Ris), Ris)
+
+    for (l, r) in zip(Lis, Ris)
+        if space(l) != space(r)
+            error("In transform, indices must come in pairs with equal spaces.")
+        end
+        if hasqns(M)
+            if dir(l) == dir(r)
+                error("In transform, indices must come in pairs with opposite directions")
+            end
+        end
+    end
+
+    CL = combiner(Lis...)
+    CR = combiner(dag(Ris)...)
 
     cL = combinedind(CL)
-    cR = combinedind(CR)
+    cR = dag(combinedind(CR))
 
-    M = M * CL * CR
+    M = M * CL * dag(CR)
     if inds(M) != (cL, cR)
         M = permute(M, cL, cR)
     end
@@ -22,7 +44,7 @@ function transform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...
         Bi, Yi, Ybari, spec = transform(Mtensor; kwargs...)
 
         Yi = Yi * dag(CL)
-        Ybari = Ybari * dag(CR)
+        Ybari = Ybari * CR
 
         return Bi, Yi, Ybari, spec
     end
@@ -144,12 +166,7 @@ function transform(
 end
 
 function transform(
-    Ms::Matrix{ElT}...;
-    maxdim,
-    mindim,
-    cutoff,
-    biorthonormalize=true,
-    unitarize=true,
+    Ms::Matrix{ElT}...; maxdim, mindim, cutoff, biorthonormalize=true, unitarize=true
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
     cumdims = cumsum([size(M, 1) for M in Ms])
@@ -256,7 +273,7 @@ function transform(
             for k in axes(Y, 2)
                 for j in firstindex(Y, 1):(k - 1)
                     # this should always be one
-                    n = dot(Ybar[:, j], Y[:, j]) 
+                    n = dot(Ybar[:, j], Y[:, j])
                     @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
 
                     Y[:, k] -= (dot(Y[:, k], Ybar[:, j]) / n) * Y[:, j]
