@@ -333,12 +333,6 @@ function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=not
         )
     end
 
-    X = dag(psil[lastindex(sites)]) * prime(psir[lastindex(sites)], "Link")
-    for i in (lastindex(sites) - 1):-1:1
-        display(matrix(X))
-        X *= dag(psil[i]) * prime(psir[i], "Link")
-    end
-
     noprime!(psil)
     noprime!(psir)
 
