@@ -54,13 +54,13 @@ let
   # setting maximum MPS internal dimensions
   # for each sweep and maximum truncation cutoff
   # used when adapting internal dimensions:
-  nsweeps = 5
+  nsweeps = 15
   maxdim = [10, 20, 100, 100, 200]
   cutoff = 1E-10
 
   # Run the DMRG algorithm, returning energy
   # (dominant eigenvalue) and optimized left- and right- MPS
-  energy, psil, psir = dmrg(H, psi0, psi0; nsweeps, maxdim, cutoff)
+  energy, psil, psir = nhdmrg(H, psi0, psi0; nsweeps, maxdim, cutoff)
   println("Final energy = $energy")
 
   nothing
