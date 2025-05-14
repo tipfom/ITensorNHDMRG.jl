@@ -222,7 +222,7 @@ function eigproblemsolver!(
 
     while length(vals) < 1
         # did not converge, retrying 
-        eigsolve_maxiter = div(5eigsolve_maxiter, 3)
+        eigsolve_maxiter = div(5eigsolve_maxiter, 2)
         eigsolve_krylovdim = div(5eigsolve_krylovdim, 3)
 
         if eigsolve_krylovdim > max_krylovdim
@@ -562,4 +562,36 @@ function nhdmrg(
         isdone && break
     end
     return (energy, psil, psir)
+end
+
+function nhdmrg(
+  x1,
+  x2,
+  x3,
+  psil0::MPS,
+  psir0::MPS;
+  nsweeps,
+  maxdim=ITensorMPS.default_maxdim(),
+  mindim=ITensorMPS.default_mindim(),
+  cutoff=ITensorMPS.default_cutoff(Float64),
+  noise=ITensorMPS.default_noise(),
+  kwargs...,
+)
+  return nhdmrg(
+    x1, x2, x3, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...
+  )
+end
+
+function nhdmrg(
+  x1,
+  psil0::MPS,
+  psir0::MPS;
+  nsweeps,
+  maxdim=ITensorMPS.default_maxdim(),
+  mindim=ITensorMPS.default_mindim(),
+  cutoff=ITensorMPS.default_cutoff(Float64),
+  noise=ITensorMPS.default_noise(),
+  kwargs...,
+)
+  return nhdmrg(x1, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...)
 end
