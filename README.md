@@ -11,7 +11,7 @@ This is an early work-in-progress development version and the implementation det
 ## Features
 Non-hermitian DMRG is currently supported for systems with and without quantum numbers.
 Both one-sided Krylov iteration, i.e., the analog of solving $A |x \rangle = \lambda |x \rangle$ and $\langle y | A = \lambda \langle y|$ seperately, as well as two-sided Krylov iteration solving the combined problem $\langle y| A | x \rangle = \lambda \langle y|x\rangle$ [1].
-As algorithm to compute the biorthogonal representation of the MPS, we include the experimental approach `pseudoeigen` as well as the `biorthoblock` algorithm [2].
+As algorithm to compute the biorthogonal representation of the MPS, we include the `biorthoblock` [2] as well as the `lrdensity` algorithm [3].
 
 ## Examples
 
@@ -87,7 +87,8 @@ end
 # Final energy = -126.62302688426553 + 6.139309720728697e-14im
 ```
 
-A with the system in Ref. [2] provided in the example folder.
+The eigen routine may be chosen by supplying either `"onesided"` or `"twosided"` as the keyword `alg` for `nhdmrg`; the biorthogonalization routine may be chosen by supplying either `"biorthoblock"` or `"lrdensity"` as the `biorthoalg` keyword.
+The system in Ref. [2] provided in the example folder.
 
 
 ## References
@@ -104,4 +105,4 @@ The `biorthoblock` algorithm is introduced in
 
 The `lrdensity` algorithm is introduced in 
 
-[3] [Universal properties of dissipative Tomonaga-Luttinger liquids: Case study of a non-Hermitian XXZ spin chain, Kazuki Yamamoto, Masaya Nakagawa, Masaki Tezuka, Masahito Ueda, and Norio Kawakami](https://doi.org/10.1103/PhysRevB.105.205125)
+[3] [Universal properties of dissipative Tomonaga-Luttinger liquids: Case study of a non-Hermitian XXZ spin chain, Kazuki Yamamoto, Masaya Nakagawa, Masaki Tezuka, Masahito Ueda, and Norio Kawakami](https://doi.org/10.1103/PhysRevB.105.205125).
