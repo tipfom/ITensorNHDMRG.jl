@@ -201,7 +201,7 @@ function eigproblemsolver!(
     eigsolve_maxiter,
     eigsolve_verbosity,
     eigsolve_which_eigenvalue,
-    max_krylovdim=1_000,
+    max_krylovdim=200,
 )
     fA = x -> productr(PH, x)
     fAH = x -> productl(PH, x)
