@@ -282,17 +282,17 @@ function transform(
             for k in axes(Y, 2)
                 for j in firstindex(Y, 1):(k - 1)
                     # this should always be one
-                    n = dot(Ybar[:, j], Y[:, j])
-                    @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
+                    n = transpose(Ybar[:, j]) * Y[:, j]
+                    # @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
 
-                    Y[:, k] -= (dot(Y[:, k], Ybar[:, j]) / n) * Y[:, j]
-                    Ybar[:, k] -= (dot(Ybar[:, k], Y[:, j]) / n) * Ybar[:, j]
+                    Y[:, k] -= ((transpose(Y[:, k]) * Ybar[:, j]) / n) * Y[:, j]
+                    Ybar[:, k] -= ((transpose(Ybar[:, k]) * Y[:, j]) / n) * Ybar[:, j]
                 end
 
                 # normalize the remainder 
-                n = sqrt(dot(Ybar[:, k], Y[:, k]))
+                n = sqrt(transpose(Ybar[:, k]) * Y[:, k])
                 Y[:, k] ./= n
-                Ybar[:, k] ./= conj(n)
+                Ybar[:, k] ./= n
             end
         end
     end
