@@ -245,11 +245,20 @@ function transform(
         @views Ybard = Ybar[:, (keepi + 1):end]
 
         # solve the Sylvester equation AX - XC = D -> A X + X (-C) + (-D) = 0
-        X = sylvester(A, -C, -D)
+        # X = sylvester(A, -C, -D)
+        try 
+            LAPACK.trsyl!('N', 'N', A, C, D, -1)
+        catch e 
+            if e isa LAPACKException && e.info == 1
+                @warn "Lapack call to trsyl! had to alter the eigenvalues indicating almost degenerate eigenvalues in the matrix"
+            else
+                throw(e)
+            end
+        end
 
         # apply the transformation
-        mul!(Ybars, Ybard, Adjoint(X), 1.0, 1.0)
-        mul!(Yd, Ys, X, -1.0, 1.0)
+        mul!(Ybars, Ybard, Adjoint(D), 1.0, 1.0)
+        mul!(Yd, Ys, D, -1.0, 1.0)
 
         # K = zero(M)
         # K[1:keep, 1:keep] .= A
