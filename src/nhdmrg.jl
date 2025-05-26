@@ -210,7 +210,7 @@ function eigproblemsolver!(
         (fA, fAH),
         Θr,
         Θl,
-        1,
+        2,
         eigsolve_which_eigenvalue,
         BiArnoldi(;
             tol=eigsolve_tol,
@@ -226,7 +226,12 @@ function eigproblemsolver!(
         eigsolve_krylovdim = div(5eigsolve_krylovdim, 3)
 
         if eigsolve_krylovdim > max_krylovdim
-            error("Did not converge")
+            # error("Did not converge")
+            return eigproblemsolver!(Algorithm("onesided"), PH, Θl, θr; eigsolve_tol,
+    eigsolve_krylovdim,
+    eigsolve_maxiter,
+    eigsolve_verbosity,
+    eigsolve_which_eigenvalue)
         end
 
         @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
@@ -235,7 +240,7 @@ function eigproblemsolver!(
             (fA, fAH),
             Θr,
             Θl,
-            1,
+            2,
             eigsolve_which_eigenvalue,
             BiArnoldi(;
                 tol=eigsolve_tol,
@@ -290,7 +295,7 @@ function eigproblemsolver!(
     return first(vals), noprime(first(vecsH)), noprime(first(vecs))
 end
 
-function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=nothing)
+function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=nothing, kwargs...)
     @assert siteinds(psir) == siteinds(psil) "both MPS need to share the same basis"
 
     @assert inner(psil, psir) >= sqrt(cutoff) "The initial vectors are almost orthogonal, overlap is $(inner(psil, psir))"
@@ -329,7 +334,7 @@ function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=not
         phir = noprime(phir)
 
         nhreplacebond!(
-            psil, psir, i, phil, phir, alg, idright; ortho="right", mindim, maxdim, cutoff
+            psil, psir, i, phil, phir, alg, idright; ortho="right", mindim, maxdim, cutoff, kwargs...
         )
     end
 
