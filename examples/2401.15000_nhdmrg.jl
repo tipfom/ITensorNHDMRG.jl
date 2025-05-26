@@ -91,7 +91,7 @@ function gap(
     t2=1.0,
     u=0.0,
     alg="twosided",
-    biorthoalg="lrdensity",
+    biorthoalg="biorthoblock",
     nexcitedstates=1,
     weight=20.0,
     offset=nothing,
@@ -131,14 +131,15 @@ function gap(
 
     sweeps = Sweeps(nsweeps; maxdim, cutoff, noise)
 
-    initial_guess = random_mps(sites, ψhf; linkdims=5)
-    _, ψr0, ψl0 = nhdmrg(
+    initial_guess = random_mps(sites, ψhf; linkdims=10)
+    _, ψl0, ψr0= nhdmrg(
         H,
-        initial_guess + random_mps(sites, ψhf; linkdims=5),
-        initial_guess + random_mps(sites, ψhf; linkdims=5),
+        initial_guess,
+        initial_guess,
         sweeps;
         alg,
         biorthoalg,
+        unitarize=false
     )
     E0 = inner(ψl0', H, ψr0) / inner(ψl0, ψr0)
     @info "Found groundstate with energy $E0"
@@ -148,16 +149,18 @@ function gap(
     Er = [E0]
     for i in 1:nexcitedstates
         initial_guess = random_mps(sites, ψhf; linkdims=5)
-        Eri, ψri, ψli = nhdmrg(
+        Eri, ψli, ψri = nhdmrg(
             H,
             Ψl,
             Ψr,
-            initial_guess + random_mps(sites, ψhf; linkdims=5),
-            initial_guess + random_mps(sites, ψhf; linkdims=5),
+            initial_guess,
+            initial_guess,
             sweeps;
             weight,
             alg,
             biorthoalg,
+            unitarize=false,
+            biorthonormalize=false,
         )
 
         Ei = inner(ψli', H, ψri) / inner(ψli, ψri)
