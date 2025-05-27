@@ -132,12 +132,12 @@ function nhreplacebond!(
     leftindsl = if ortho == "left"
         commoninds(Ml[b], phil)
     else
-        commoninds(Ml[b + 1], phil)
+        commoninds(Ml[b+1], phil)
     end
     leftindsr = if ortho == "left"
         commoninds(Mr[b], phir)
     else
-        commoninds(Mr[b + 1], phir)
+        commoninds(Mr[b+1], phir)
     end
 
     phirdeco = copy(phir)
@@ -153,7 +153,7 @@ function nhreplacebond!(
         eigen_perturbation,
         leftindsl,
         leftindsr,
-        tags(commonind(Ml[b], Ml[b + 1]));
+        tags(commonind(Ml[b], Ml[b+1]));
         mindim,
         maxdim,
         cutoff,
@@ -173,7 +173,7 @@ function nhreplacebond!(
             phi * dag(U2) / normfactor, U
         end
         M[b] = L
-        M[b + 1] = R
+        M[b+1] = R
 
         if ortho == "left"
             ITensorMPS.leftlim(M) == b - 1 &&
@@ -222,16 +222,20 @@ function eigproblemsolver!(
 
     while length(vals) < 1
         # did not converge, retrying 
-        eigsolve_maxiter = div(5eigsolve_maxiter, 2)
-        eigsolve_krylovdim = div(5eigsolve_krylovdim, 3)
+        eigsolve_maxiter = max(eigsolve_maxiter + 1, div(5eigsolve_maxiter, 3))
+        eigsolve_krylovdim = max(eigsolve_krylovdim + 1, div(5eigsolve_krylovdim, 3))
 
         if eigsolve_krylovdim > max_krylovdim
             # error("Did not converge")
-            return eigproblemsolver!(Algorithm("onesided"), PH, Θl, θr; eigsolve_tol,
-    eigsolve_krylovdim,
-    eigsolve_maxiter,
-    eigsolve_verbosity,
-    eigsolve_which_eigenvalue)
+            return eigproblemsolver!(Algorithm("onesided"), #
+                PH,
+                Θl,
+                Θr;
+                eigsolve_tol,
+                eigsolve_krylovdim,
+                eigsolve_maxiter,
+                eigsolve_verbosity,
+                eigsolve_which_eigenvalue)
         end
 
         @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
@@ -311,7 +315,7 @@ function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=not
         Mi = ITensor(1)
 
         if length(M) > 0
-            Mi = M[end] * delta(prime(dag(sites[i - 1])), sites[i - 1])
+            Mi = M[end] * delta(prime(dag(sites[i-1])), sites[i-1])
         end
 
         Mi *= prime(psir[i], sites[i])
@@ -321,13 +325,13 @@ function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=not
 
     noprime!(psir)
 
-    for i in (lastindex(sites) - 1):-1:1
-        phil = psil[i] * psil[i + 1]
-        phir = setprime(psir[i], 1) * setprime(psir[i + 1], 1)
+    for i in (lastindex(sites)-1):-1:1
+        phil = psil[i] * psil[i+1]
+        phir = setprime(psir[i], 1) * setprime(psir[i+1], 1)
 
         idright = nothing
         if i > 1
-            idright = M[i - 1] * delta(prime(dag(sites[i - 1])), sites[i - 1])
+            idright = M[i-1] * delta(prime(dag(sites[i-1])), sites[i-1])
             swapprime!(idright, 0 => 1)
         end
 
@@ -486,8 +490,8 @@ function nhdmrg(
                     checkflux(PH)
                 end
 
-                Θr = psir[b] * psir[b + 1]
-                Θl = psil[b] * psil[b + 1]
+                Θr = psir[b] * psir[b+1]
+                Θl = psil[b] * psil[b+1]
 
                 energy, v, w = eigproblemsolver!(
                     Algorithm(alg),
@@ -570,33 +574,33 @@ function nhdmrg(
 end
 
 function nhdmrg(
-  x1,
-  x2,
-  x3,
-  psil0::MPS,
-  psir0::MPS;
-  nsweeps,
-  maxdim=ITensorMPS.default_maxdim(),
-  mindim=ITensorMPS.default_mindim(),
-  cutoff=ITensorMPS.default_cutoff(Float64),
-  noise=ITensorMPS.default_noise(),
-  kwargs...,
+    x1,
+    x2,
+    x3,
+    psil0::MPS,
+    psir0::MPS;
+    nsweeps,
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(Float64),
+    noise=ITensorMPS.default_noise(),
+    kwargs...,
 )
-  return nhdmrg(
-    x1, x2, x3, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...
-  )
+    return nhdmrg(
+        x1, x2, x3, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...
+    )
 end
 
 function nhdmrg(
-  x1,
-  psil0::MPS,
-  psir0::MPS;
-  nsweeps,
-  maxdim=ITensorMPS.default_maxdim(),
-  mindim=ITensorMPS.default_mindim(),
-  cutoff=ITensorMPS.default_cutoff(Float64),
-  noise=ITensorMPS.default_noise(),
-  kwargs...,
+    x1,
+    psil0::MPS,
+    psir0::MPS;
+    nsweeps,
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(Float64),
+    noise=ITensorMPS.default_noise(),
+    kwargs...,
 )
-  return nhdmrg(x1, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...)
+    return nhdmrg(x1, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...)
 end
