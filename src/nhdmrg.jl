@@ -554,6 +554,20 @@ function nhdmrg(
                     )
                     flush(stdout)
                 end
+
+                sweep_is_done = (b == 1 && ha == 2)
+                measure!(
+                    observer;
+                    energy,
+                    psi=(psil, psir),
+                    projected_operator=PH,
+                    bond=b,
+                    sweep=sw,
+                    half_sweep=ha,
+                    spec,
+                    outputlevel,
+                    sweep_is_done,
+                )
             end
         end
         if outputlevel >= 1
