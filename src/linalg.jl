@@ -1,4 +1,4 @@
-function transform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...)
+function biorthoblocktransform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...)
     # Linds, Rinds may not have the correct directions
     Lis = ITensors.indices(leftinds)
     Ris = ITensors.indices(rightinds)
@@ -41,7 +41,7 @@ function transform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...
 
         return D, U, dag(U), spec
     else
-        Bi, Yi, Ybari, spec = transform(Mtensor; kwargs...)
+        Bi, Yi, Ybari, spec = biorthoblocktransform(Mtensor; kwargs...)
 
         Yi = Yi * dag(CL)
         Ybari = Ybari * CR
@@ -50,11 +50,11 @@ function transform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...
     end
 end
 
-function transform(
+function biorthoblocktransform(
     M::ITensors.Tensor{ElT,2,<:ITensors.Dense}; kwargs...
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
-    lB, lY, lYbar, spec = transform(matrix(M); kwargs...)
+    lB, lY, lYbar, spec = biorthoblocktransform(matrix(M); kwargs...)
     B = first(lB)
     Y = first(lY)
     Ybar = first(lYbar)
@@ -68,7 +68,7 @@ function transform(
     return Bi, Yi, Ybari, spec
 end
 
-function transform(
+function biorthoblocktransform(
     M::ITensors.Tensor{ElT,2,<:ITensors.BlockSparse}; kwargs...
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
@@ -81,7 +81,7 @@ function transform(
     Ms = [collect(M[b]) for b in eachnzblock(M)]
 
     # transform all the blocks
-    lB, lY, lYbar, spec = transform(Ms...; kwargs...)
+    lB, lY, lYbar, spec = biorthoblocktransform(Ms...; kwargs...)
 
     # find all the blocks for which the truncation reduced the size to zero
     dropblocks = Int64[]
@@ -165,7 +165,7 @@ function transform(
     return itensor(B), itensor(Y), itensor(Ybar), spec
 end
 
-function transform(
+function biorthoblocktransform(
     Ms::Matrix{ElT}...; maxdim, mindim, cutoff, biorthonormalize=true, unitarize=true, verbosity=1
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000

@@ -40,7 +40,7 @@ function nhfactorize(
         rho += drho
     end
 
-    B, Y, Ybar, spec = transform(rho, lindsl', dag(lindsr); kwargs...)
+    B, Y, Ybar, spec = biorthoblocktransform(rho, lindsl', dag(lindsr); kwargs...)
     noprime!(Y)
     noprime!(Ybar)
     Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
