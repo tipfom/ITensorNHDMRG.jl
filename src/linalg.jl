@@ -200,26 +200,27 @@ function biorthoblocktransform(
     minvalkept = min(firstindex(valsperm) + mindim, lastindex(valsperm))
     maxvalkept = min(firstindex(valsperm) + maxdim - 1, lastindex(valsperm))
     
-    select[valsperm[firstindex(valsperm):minvalkept]] .= true
+    @inbounds for i in firstindex(valsperm):minvalkept
+        select[valsperm[i]] = true
+    end
     
     if use_absolute_cutoff
         relative_cutoff = use_relative_cutoff ? vals[1] * cutoff : cutoff
-        for i in minvalkept+1:maxvalkept
+        @inbounds for i in minvalkept+1:maxvalkept
             abs(vals[valsperm[i]]) <= relative_cutoff && break
             select[valsperm[i]] = true
         end
     else
-        relative_cutoff = use_relative_cutoff ? sum(abs2, vals) * cutoff : cutoff
+        relative_cutoff = use_relative_cutoff ? sum(abs, vals) * cutoff : cutoff
         itrunc = maxvalkept
-        truncatedweight = 0.0
-        for i in itrunc+1:lastindex(valsperm)
-            truncatedweight += abs2(vals[valsperm[i]])
-        end
-        while itrunc > minvalkept && truncatedweight < relative_cutoff
-            truncatedweight += abs2(vals[valsperm[itrunc]]) 
+        truncatedweight = sum(i -> abs(vals[i]), valsperm[itrunc:end])
+        @inbounds while itrunc > minvalkept && truncatedweight < relative_cutoff
             itrunc -= 1
+            truncatedweight += abs(vals[valsperm[itrunc]]) 
         end
-        select[valsperm[minvalkept+1:itrunc]] .= true
+        @inbounds for i in minvalkept+1:itrunc
+            select[valsperm[i]] = true
+        end
     end
 
     @assert sum(select) <= maxdim
@@ -257,7 +258,7 @@ function biorthoblocktransform(
             continue
         end
 
-        truncerr += sum(abs, F.values[(keepi + 1):end])
+        truncerr += sum(abs, @views F.values[(keepi + 1):end])
 
         @views A = F.Schur[1:keepi, 1:keepi]
         @views B = F.Schur[(keepi + 1):end, 1:keepi]

@@ -193,7 +193,7 @@ function nhdmrg(
                 Θr = psir[b] * psir[b + 1]
                 Θl = psil[b] * psil[b + 1]
 
-                energy, v, w = eigproblemsolver!(
+                energy, v, w = nhproblemsolver!(
                     Algorithm(alg),
                     PH,
                     Θl,

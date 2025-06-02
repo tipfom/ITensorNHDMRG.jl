@@ -111,6 +111,7 @@ function nhproblemsolver!(
 end
 
 function iteraterayleighquotient(
+    PH,
     left,
     right;
     eigsolve_tol,
@@ -121,7 +122,7 @@ function iteraterayleighquotient(
 )
     ρ = inner(left, productr(PH, right)) / inner(left, right)
 
-    λt = eigsolve_which_eigenvalue(ρ)
+    λt = eigsolve_which_eigenvalue isa Function ? eigsolve_which_eigenvalue(ρ) : ρ
 
     Aright(x) = productr(PH, x) - λt * x
     Aleft(x) = productl(PH, x) - conj(λt) * x
@@ -165,6 +166,7 @@ function nhproblemsolver!(
 
     for _ in 1:eigsolve_refinements
         Θl, Θr = iteraterayleighquotient(
+            PH,
             Θl,
             Θr;
             eigsolve_tol,

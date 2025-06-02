@@ -6,9 +6,9 @@ include("projnhmpo.jl")
 include("projnhmps.jl")
 include("projnhmpo_mps.jl")
 include("nhdmrg.jl")
-include("linalg.jl")
-include("eigproblemsolver.jl")
 include("nhfactorize.jl")
+include("nhproblemsolver.jl")
+include("linalg.jl")
 
 export nhdmrg
 
