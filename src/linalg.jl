@@ -1,4 +1,6 @@
-function biorthoblocktransform(M::ITensor, leftinds, rightinds; checknormal=false, kwargs...)
+function biorthoblocktransform(
+    M::ITensor, leftinds, rightinds; checknormal=false, kwargs...
+)
     # Linds, Rinds may not have the correct directions
     Lis = ITensors.indices(leftinds)
     Ris = ITensors.indices(rightinds)
@@ -166,7 +168,15 @@ function biorthoblocktransform(
 end
 
 function biorthoblocktransform(
-    Ms::Matrix{ElT}...; maxdim, mindim, cutoff, biorthonormalize=true, unitarize=true, verbosity=1
+    Ms::Matrix{ElT}...;
+    maxdim,
+    mindim,
+    cutoff,
+    biorthonormalize=true,
+    unitarize=true,
+    verbosity=1,
+    use_absolute_cutoff=false,
+    use_relative_cutoff=true,
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
     cumdims = cumsum([size(M, 1) for M in Ms])
@@ -187,10 +197,29 @@ function biorthoblocktransform(
     # part of M is at (keep+1 ... end)
     valsperm = sortperm(vals; by=abs2, rev=true)
     select = zeros(Bool, size(vals))
-    for i in
-        firstindex(valsperm):min(firstindex(valsperm) + maxdim - 1, lastindex(valsperm))
-        abs(vals[valsperm[i]]) <= cutoff && break
-        select[valsperm[i]] = true
+    minvalkept = min(firstindex(valsperm) + mindim, lastindex(valsperm))
+    maxvalkept = min(firstindex(valsperm) + maxdim - 1, lastindex(valsperm))
+    
+    select[valsperm[firstindex(valsperm):minvalkept]] .= true
+    
+    if use_absolute_cutoff
+        relative_cutoff = use_relative_cutoff ? vals[1] * cutoff : cutoff
+        for i in minvalkept+1:maxvalkept
+            abs(vals[valsperm[i]]) <= relative_cutoff && break
+            select[valsperm[i]] = true
+        end
+    else
+        relative_cutoff = use_relative_cutoff ? sum(abs2, vals) * cutoff : cutoff
+        itrunc = maxvalkept
+        truncatedweight = 0.0
+        for i in itrunc+1:lastindex(valsperm)
+            truncatedweight += abs2(vals[valsperm[i]])
+        end
+        while itrunc > minvalkept && truncatedweight < relative_cutoff
+            truncatedweight += abs2(vals[valsperm[itrunc]]) 
+            itrunc -= 1
+        end
+        select[valsperm[minvalkept+1:itrunc]] .= true
     end
 
     @assert sum(select) <= maxdim
@@ -246,11 +275,11 @@ function biorthoblocktransform(
 
         # solve the Sylvester equation AX - XC = D -> A X + X (-C) + (-D) = 0
         # X = sylvester(A, -C, -D)
-        try 
+        try
             LAPACK.trsyl!('N', 'N', A, C, D, -1)
-        catch e 
+        catch e
             if e isa LAPACKException && e.info == 1
-                if verbosity > 0 
+                if verbosity > 0
                     @warn "Lapack call to trsyl! had to alter the eigenvalues indicating almost degenerate eigenvalues in the matrix"
                 end
             else
