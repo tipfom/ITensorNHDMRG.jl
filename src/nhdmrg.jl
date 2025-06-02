@@ -1,8 +1,9 @@
 using ITensors: @timeit_debug, @debug_check, scalartype, Printf, Algorithm, @Algorithm_str
 using ITensorMPS: check_hascommoninds, ProjMPO, position!
-using KrylovKit: bieigsolve, eigsolve, BiArnoldi
 using Printf: @printf
 using LinearAlgebra
+
+nhdmrg(H::MPO, psi::MPS, sweeps::Sweeps; kwargs...) = nhdmrg(H, psi, psi, sweeps; kwargs...)
 
 function nhdmrg(H::MPO, psil0::MPS, psir0::MPS, sweeps::Sweeps; kwargs...)
     check_hascommoninds(siteinds, H, psir0)
@@ -13,6 +14,18 @@ function nhdmrg(H::MPO, psil0::MPS, psir0::MPS, sweeps::Sweeps; kwargs...)
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO(H)
     return nhdmrg(PH, psil0, psir0, sweeps; kwargs...)
+end
+
+function nhdmrg(
+    H::MPO,
+    Msl::Vector{MPS},
+    Msr::Vector{MPS},
+    psi::MPS,
+    sweeps::Sweeps;
+    weight=true,
+    kwargs...,
+)
+    return nhdmrg(H, Msll, Msr, psi, psi, sweeps; weight, kwargs...)
 end
 
 function nhdmrg(
@@ -33,319 +46,6 @@ function nhdmrg(
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO_MPS(H, Msl, Msr; weight)
     return nhdmrg(PH, psil0, psir0, sweeps; kwargs...)
-end
-
-function decomposerho(
-    ::Algorithm"pseudoeigen",
-    phil,
-    phir,
-    drho,
-    lindsl,
-    lindsr,
-    targettags;
-    ishermitian=false,
-    kwargs...,
-)
-    # compute reduced density matrix and apply perturbation
-    replaceinds!(phil, lindsl, lindsl')
-    rho = phil * dag(phir)
-    if !isnothing(drho)
-        rho += drho
-    end
-
-    D, U, spec = eigen(rho, lindsl', dag(lindsr); ishermitian, kwargs...)
-
-    if ishermitian
-        U = noprime!(U)
-        return U, U, spec
-    else
-        Ubar = pinv(U, lindsr)
-        U = noprime!(U)
-        Ubar = noprime!(Ubar)
-        return U, Ubar, spec
-    end
-end
-
-function decomposerho(
-    ::Algorithm"biorthoblock", phil, phir, drho, lindsl, lindsr, targettags; kwargs...
-)
-    # compute reduced density matrix and apply perturbation
-    replaceinds!(phil, lindsl, lindsl')
-    rho = phil * dag(phir)
-    if !isnothing(drho)
-        rho += drho
-    end
-
-    B, Y, Ybar, spec = transform(rho, lindsl', dag(lindsr); kwargs...)
-    noprime!(Y)
-    noprime!(Ybar)
-    Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
-    Ybar = replacetags!(Ybar, tags(commonind(Ybar, B)), targettags)
-    return Y, dag(Ybar), spec
-end
-
-function decomposerho(
-    ::Algorithm"lrdensity", phil, phir, drho, lindsl, lindsr, targettags; kwargs...
-)
-    # TODO: assert that phil and phir have the same inds
-
-    # Phys. Rev. B 105, 205125 
-    # https://doi.org/10.1103/PhysRevB.105.205125
-    # compute reduced density matrix and apply perturbation
-    phir2 = replaceinds(phir, lindsr, lindsr')
-    phil2 = replaceinds(phil, lindsl, lindsl')
-
-    rho = (phil2 * dag(phil) + phir2 * dag(phir)) / 2
-    if !isnothing(drho)
-        rho += drho
-    end
-
-    D, U, spec = eigen(rho, lindsl', dag(lindsl); ishermitian=true, kwargs...)
-    U = noprime!(U)
-    return U, U, spec
-end
-
-function nhreplacebond!(
-    Ml::MPS,
-    Mr::MPS,
-    b::Int,
-    phil::ITensor,
-    phir::ITensor,
-    alg,
-    idright=nothing;
-    ortho=nothing,
-    eigen_perturbation=nothing,
-    # Decomposition kwargs
-    mindim=nothing,
-    maxdim=nothing,
-    cutoff=nothing,
-    kwargs...,
-)
-    ortho = NDTensors.replace_nothing(ortho, "left")
-
-    if ortho != "left" && ortho != "right"
-        error(
-            "In replacebond!, got ortho = $ortho, only currently supports `left` and `right`.",
-        )
-    end
-
-    leftindsl = if ortho == "left"
-        commoninds(Ml[b], phil)
-    else
-        commoninds(Ml[b+1], phil)
-    end
-    leftindsr = if ortho == "left"
-        commoninds(Mr[b], phir)
-    else
-        commoninds(Mr[b+1], phir)
-    end
-
-    phirdeco = copy(phir)
-    if !isnothing(idright)
-        phirdeco = apply(idright, phirdeco)
-        setprime!(phirdeco, 0, commonind(phirdeco, idright))
-    end
-
-    U, Ubar, spec = decomposerho(
-        Algorithm(alg),
-        phil,
-        phirdeco,
-        eigen_perturbation,
-        leftindsl,
-        leftindsr,
-        tags(commonind(Ml[b], Ml[b+1]));
-        mindim,
-        maxdim,
-        cutoff,
-        kwargs...,
-    )
-
-    # replaceinds!(phil, leftindsl', leftindsl)
-    noprime!(phil)
-
-    sD = sum(eigs(spec))
-    normfactor = sqrt(abs(sD))
-
-    for (M, phi, U, U2) in [(Ml, phil, U, Ubar), (Mr, phir, Ubar, U)]
-        L, R = if ortho == "left"
-            U, phi * dag(U2) / normfactor
-        elseif ortho == "right"
-            phi * dag(U2) / normfactor, U
-        end
-        M[b] = L
-        M[b+1] = R
-
-        if ortho == "left"
-            ITensorMPS.leftlim(M) == b - 1 &&
-                ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) + 1)
-            ITensorMPS.rightlim(M) == b + 1 &&
-                ITensorMPS.setrightlim!(M, ITensorMPS.rightlim(M) + 1)
-        elseif ortho == "right"
-            ITensorMPS.leftlim(M) == b &&
-                ITensorMPS.setleftlim!(M, ITensorMPS.leftlim(M) - 1)
-            ITensorMPS.rightlim(M) == b + 2 &&
-                ITensorMPS.setrightlim!(M, ITensorMPS.rightlim(M) - 1)
-        end
-    end
-
-    return spec
-end
-
-function eigproblemsolver!(
-    ::Algorithm"twosided",
-    PH,
-    Θl,
-    Θr;
-    eigsolve_tol,
-    eigsolve_krylovdim,
-    eigsolve_maxiter,
-    eigsolve_verbosity,
-    eigsolve_which_eigenvalue,
-    max_krylovdim=200,
-)
-    fA = x -> productr(PH, x)
-    fAH = x -> productl(PH, x)
-
-    vals, V, W, info = bieigsolve(
-        (fA, fAH),
-        Θr,
-        Θl,
-        2,
-        eigsolve_which_eigenvalue,
-        BiArnoldi(;
-            tol=eigsolve_tol,
-            krylovdim=eigsolve_krylovdim,
-            maxiter=eigsolve_maxiter,
-            verbosity=eigsolve_verbosity,
-        ),
-    )
-
-    while length(vals) < 1
-        # did not converge, retrying 
-        eigsolve_maxiter = max(eigsolve_maxiter + 1, div(5eigsolve_maxiter, 3))
-        eigsolve_krylovdim = max(eigsolve_krylovdim + 1, div(5eigsolve_krylovdim, 3))
-
-        if eigsolve_krylovdim > max_krylovdim
-            # error("Did not converge")
-            return eigproblemsolver!(Algorithm("onesided"), #
-                PH,
-                Θl,
-                Θr;
-                eigsolve_tol,
-                eigsolve_krylovdim,
-                eigsolve_maxiter,
-                eigsolve_verbosity,
-                eigsolve_which_eigenvalue)
-        end
-
-        @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
-
-        vals, V, W, info = bieigsolve(
-            (fA, fAH),
-            Θr,
-            Θl,
-            2,
-            eigsolve_which_eigenvalue,
-            BiArnoldi(;
-                tol=eigsolve_tol,
-                krylovdim=eigsolve_krylovdim,
-                maxiter=eigsolve_maxiter,
-                verbosity=eigsolve_verbosity,
-            ),
-        )
-    end
-
-    return first(vals), first(V), first(W)
-end
-
-function eigproblemsolver!(
-    ::Algorithm"onesided",
-    PH,
-    Θl,
-    Θr;
-    eigsolve_tol,
-    eigsolve_krylovdim,
-    eigsolve_maxiter,
-    eigsolve_verbosity,
-    eigsolve_which_eigenvalue,
-)
-    fA = x -> productr(PH, x)
-    fAH = x -> productl(PH, x)
-
-    valsH, vecsH = eigsolve(
-        fAH,
-        Θl,
-        1,
-        eigsolve_which_eigenvalue;
-        ishermitian=false,
-        tol=eigsolve_tol,
-        krylovdim=eigsolve_krylovdim,
-        maxiter=eigsolve_maxiter,
-        verbosity=eigsolve_verbosity,
-    )
-
-    vals, vecs = eigsolve(
-        fA,
-        Θr,
-        1,
-        eigsolve_which_eigenvalue;
-        ishermitian=false,
-        tol=eigsolve_tol,
-        krylovdim=eigsolve_krylovdim,
-        maxiter=eigsolve_maxiter,
-        verbosity=eigsolve_verbosity,
-    )
-
-    return first(vals), noprime(first(vecsH)), noprime(first(vecs))
-end
-
-function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=nothing, kwargs...)
-    @assert siteinds(psir) == siteinds(psil) "both MPS need to share the same basis"
-
-    @assert inner(psil, psir) >= sqrt(cutoff) "The initial vectors are almost orthogonal, overlap is $(inner(psil, psir))"
-
-    sites = siteinds(psir)
-
-    noprime!(psir)
-    noprime!(psil)
-    prime!(psir, "Link")
-
-    M = ITensor[]
-    for i in firstindex(sites):lastindex(sites)
-        Mi = ITensor(1)
-
-        if length(M) > 0
-            Mi = M[end] * delta(prime(dag(sites[i-1])), sites[i-1])
-        end
-
-        Mi *= prime(psir[i], sites[i])
-        Mi *= dag(psil[i])
-        push!(M, Mi)
-    end
-
-    noprime!(psir)
-
-    for i in (lastindex(sites)-1):-1:1
-        phil = psil[i] * psil[i+1]
-        phir = setprime(psir[i], 1) * setprime(psir[i+1], 1)
-
-        idright = nothing
-        if i > 1
-            idright = M[i-1] * delta(prime(dag(sites[i-1])), sites[i-1])
-            swapprime!(idright, 0 => 1)
-        end
-
-        phir = noprime(phir)
-
-        nhreplacebond!(
-            psil, psir, i, phil, phir, alg, idright; ortho="right", mindim, maxdim, cutoff, kwargs...
-        )
-    end
-
-    noprime!(psil)
-    noprime!(psir)
-
-    return psir, psil
 end
 
 """
@@ -490,8 +190,8 @@ function nhdmrg(
                     checkflux(PH)
                 end
 
-                Θr = psir[b] * psir[b+1]
-                Θl = psil[b] * psil[b+1]
+                Θr = psir[b] * psir[b + 1]
+                Θl = psil[b] * psil[b + 1]
 
                 energy, v, w = eigproblemsolver!(
                     Algorithm(alg),
@@ -601,7 +301,35 @@ function nhdmrg(
     kwargs...,
 )
     return nhdmrg(
-        x1, x2, x3, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...
+        x1,
+        x2,
+        x3,
+        psil0,
+        psir0,
+        ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise);
+        kwargs...,
+    )
+end
+
+function nhdmrg(
+    x1,
+    x2,
+    x3,
+    psi::MPS,
+    nsweeps,
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(Float64),
+    noise=ITensorMPS.default_noise(),
+    kwargs...,
+)
+    return nhdmrg(
+        x1,
+        x2,
+        x3,
+        psi,
+        ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise);
+        kwargs...,
     )
 end
 
@@ -616,5 +344,30 @@ function nhdmrg(
     noise=ITensorMPS.default_noise(),
     kwargs...,
 )
-    return nhdmrg(x1, psil0, psir0, ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise); kwargs...)
+    return nhdmrg(
+        x1,
+        psil0,
+        psir0,
+        ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise);
+        kwargs...,
+    )
+end
+
+
+function nhdmrg(
+    x1,
+    psi::MPS;
+    nsweeps,
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(Float64),
+    noise=ITensorMPS.default_noise(),
+    kwargs...,
+)
+    return nhdmrg(
+        x1,
+        psi,
+        ITensorMPS._dmrg_sweeps(; nsweeps, maxdim, mindim, cutoff, noise);
+        kwargs...,
+    )
 end

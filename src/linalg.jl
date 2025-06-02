@@ -166,7 +166,7 @@ function transform(
 end
 
 function transform(
-    Ms::Matrix{ElT}...; maxdim, mindim, cutoff, biorthonormalize=true, unitarize=true
+    Ms::Matrix{ElT}...; maxdim, mindim, cutoff, biorthonormalize=true, unitarize=true, verbosity=1
 ) where {ElT<:Union{Real,Complex}}
     # transforms the matrix M according to the procedure outlined in App. C in 2401.15000
     cumdims = cumsum([size(M, 1) for M in Ms])
@@ -250,7 +250,9 @@ function transform(
             LAPACK.trsyl!('N', 'N', A, C, D, -1)
         catch e 
             if e isa LAPACKException && e.info == 1
-                @warn "Lapack call to trsyl! had to alter the eigenvalues indicating almost degenerate eigenvalues in the matrix"
+                if verbosity > 0 
+                    @warn "Lapack call to trsyl! had to alter the eigenvalues indicating almost degenerate eigenvalues in the matrix"
+                end
             else
                 throw(e)
             end
