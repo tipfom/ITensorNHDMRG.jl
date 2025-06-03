@@ -124,20 +124,19 @@ function iteraterayleighquotient(
 
     λt = eigsolve_which_eigenvalue isa Function ? eigsolve_which_eigenvalue(ρ) : ρ
 
-    Aright(x) = productr(PH, x) - λt * x
-    Aleft(x) = productl(PH, x) - conj(λt) * x
-
     nr, info = linsolve(
-        Aright,
-        right;
+        x -> productr(PH, x),
+        right,
+        -λt;
         tol=eigsolve_tol,
         krylovdim=eigsolve_krylovdim,
         maxiter=eigsolve_maxiter,
         verbosity=eigsolve_verbosity,
     )
     nl, info = linsolve(
-        Aleft,
-        left;
+        x -> productl(PH, x),
+        left,
+        -conj(λt);
         tol=eigsolve_tol,
         krylovdim=eigsolve_krylovdim,
         maxiter=eigsolve_maxiter,
