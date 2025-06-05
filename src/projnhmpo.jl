@@ -1,28 +1,25 @@
 using ITensors, ITensorMPS
 
-mutable struct ProjNHMPO <: ITensorMPS.AbstractProjMPO
+mutable struct TwoSidedProjMPO <: ITensorMPS.AbstractProjMPO
     lpos::Int
     rpos::Int
     nsite::Int
     H::MPO
     LR::Vector{ITensor}
 end
-ProjNHMPO(H::MPO) = ProjNHMPO(0, length(H) + 1, 2, H, Vector{ITensor}(undef, length(H)))
+TwoSidedProjMPO(H::MPO) = TwoSidedProjMPO(0, length(H) + 1, 2, H, Vector{ITensor}(undef, length(H)))
 
-Base.copy(P::ProjNHMPO) = ProjNHMPO(P.lpos, P.rpos, P.nsite, copy(P.H), copy(P.LR))
+Base.copy(P::TwoSidedProjMPO) = TwoSidedProjMPO(P.lpos, P.rpos, P.nsite, copy(P.H), copy(P.LR))
 
-function ITensorMPS.set_nsite!(P::ProjNHMPO, nsite)
+function ITensorMPS.set_nsite!(P::TwoSidedProjMPO, nsite)
     P.nsite = nsite
     return P
 end
 
-productl(P::ProjNHMPO, v::ITensor) = product(P, v)
-productr(P::ProjNHMPO, v::ITensor) = product(P, v)
-
-ITensorMPS.nsite(P::ProjNHMPO) = P.nsite
+ITensorMPS.nsite(P::TwoSidedProjMPO) = P.nsite
 
 function ITensorMPS._makeL!(
-    P::ProjNHMPO, psil::MPS, psir::MPS, k::Int
+    P::TwoSidedProjMPO, psil::MPS, psir::MPS, k::Int
 )::Union{ITensor,Nothing}
     # Save the last `L` that is made to help with caching
     # for DiskProjMPO
@@ -38,8 +35,8 @@ function ITensorMPS._makeL!(
     ll = max(ll, 0)
     L = lproj(P)
     while ll < k
-        L = L * psir[ll + 1] * P.H[ll + 1] * dag(prime(psil[ll + 1]))
-        P.LR[ll + 1] = L
+        L = L * psir[ll+1] * P.H[ll+1] * dag(prime(psil[ll+1]))
+        P.LR[ll+1] = L
         ll += 1
     end
     # Needed when moving lproj backward.
@@ -47,13 +44,13 @@ function ITensorMPS._makeL!(
     return L
 end
 
-function ITensorMPS.makeL!(P::ProjNHMPO, psil::MPS, psir::MPS, k::Int)
+function ITensorMPS.makeL!(P::TwoSidedProjMPO, psil::MPS, psir::MPS, k::Int)
     ITensorMPS._makeL!(P, psil, psir, k)
     return P
 end
 
 function ITensorMPS._makeR!(
-    P::ProjNHMPO, psil::MPS, psir::MPS, k::Int
+    P::TwoSidedProjMPO, psil::MPS, psir::MPS, k::Int
 )::Union{ITensor,Nothing}
     # Save the last `R` that is made to help with caching
     # for DiskProjMPO
@@ -70,26 +67,26 @@ function ITensorMPS._makeR!(
     rl = min(rl, N + 1)
     R = rproj(P)
     while rl > k
-        R = R * psir[rl - 1] * P.H[rl - 1] * dag(prime(psil[rl - 1]))
-        P.LR[rl - 1] = R
+        R = R * psir[rl-1] * P.H[rl-1] * dag(prime(psil[rl-1]))
+        P.LR[rl-1] = R
         rl -= 1
     end
     P.rpos = k
     return R
 end
 
-function ITensorMPS.makeR!(P::ProjNHMPO, psil::MPS, psir::MPS, k::Int)
+function ITensorMPS.makeR!(P::TwoSidedProjMPO, psil::MPS, psir::MPS, k::Int)
     ITensorMPS._makeR!(P, psil, psir, k)
     return P
 end
 
-function ITensorMPS.position!(P::ProjNHMPO, psil::MPS, psir::MPS, pos::Int)
+function ITensorMPS.position!(P::TwoSidedProjMPO, psil::MPS, psir::MPS, pos::Int)
     ITensorMPS.makeL!(P, psil, psir, pos - 1)
     ITensorMPS.makeR!(P, psil, psir, pos + nsite(P))
     return P
 end
 
-function ITensorMPS.noiseterm(P::ProjNHMPO, thetal::ITensor, thetar::ITensor, ortho::String)::ITensor
+function ITensorMPS.noiseterm(P::TwoSidedProjMPO, thetal::ITensor, thetar::ITensor, ortho::String)::ITensor
     if nsite(P) != 2
         error("noise term only defined for 2-site ProjMPO")
     end
@@ -111,4 +108,34 @@ function ITensorMPS.noiseterm(P::ProjNHMPO, thetal::ITensor, thetar::ITensor, or
     Xr = X * thetar
 
     Xl * dag(noprime(Xr))
+end
+
+mutable struct ProjNHMPO
+    Pl::TwoSidedProjMPO
+    Pr::TwoSidedProjMPO
+end
+
+ProjNHMPO(H::MPO) = ProjNHMPO(TwoSidedProjMPO(dag(swapprime(conj(H), 0 => 1))), TwoSidedProjMPO(H))
+# ProjNHMPO(H::MPO) = ProjNHMPO(TwoSidedProjMPO(H), TwoSidedProjMPO(H))
+
+Base.copy(P::ProjNHMPO) = ProjNHMPO(copy(P.Pl), copy(P.Pr))
+
+function ITensorMPS.set_nsite!(P::ProjNHMPO, nsite)
+    set_nsite!(P.Pl, nsite)
+    set_nsite!(P.Pr, nsite)
+    return P
+end
+
+productl(P::ProjNHMPO, v::ITensor) = product(P.Pl, v)
+productr(P::ProjNHMPO, v::ITensor) = product(P.Pr, v)
+
+function ITensorMPS.position!(P::ProjNHMPO, psil::MPS, psir::MPS, pos::Int)
+    ITensorMPS.position!(P.Pl, psir, psil, pos)
+    ITensorMPS.position!(P.Pr, psil, psir, pos)
+    # ITensorMPS.position!(P.Pr, psir, psil, pos)
+    return P
+end
+
+function ITensorMPS.noiseterm(P::ProjNHMPO, thetal::ITensor, thetar::ITensor, ortho::String)::ITensor
+    return ITensorMPS.noiseterm(P.Pr, thetal, thetar, ortho)
 end

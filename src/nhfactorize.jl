@@ -1,4 +1,3 @@
-
 function nhfactorize(
     ::Algorithm"pseudoeigen",
     phil,
@@ -37,12 +36,14 @@ function nhfactorize(
     replaceinds!(phil, lindsl, lindsl')
     rho = phil * dag(phir)
     if !isnothing(drho)
+        !hassameinds(rho, drho) && error("Noise term has wrong indices")
         rho += drho
     end
 
     B, Y, Ybar, spec = biorthoblocktransform(rho, lindsl', dag(lindsr); kwargs...)
     noprime!(Y)
     noprime!(Ybar)
+    noprime!(phir)
     Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
     Ybar = replacetags!(Ybar, tags(commonind(Ybar, B)), targettags)
     return Y, dag(Ybar), spec
@@ -51,7 +52,7 @@ end
 function nhfactorize(
     ::Algorithm"lrdensity", phil, phir, drho, lindsl, lindsr, targettags; kwargs...
 )
-    # TODO: assert that phil and phir have the same inds
+    !hassameinds(phil, phir) && error("Left and right states need to share the same indices")
 
     # Phys. Rev. B 105, 205125 
     # https://doi.org/10.1103/PhysRevB.105.205125

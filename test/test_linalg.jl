@@ -1,12 +1,12 @@
 using ITensors, LinearAlgebra
-import ITensorNHDMRG: transform
+import ITensorNHDMRG: biorthoblocktransform
 
 @testset "Test Reconstruct QN Transformation $(elt)" for elt in (Float32, Float64, ComplexF32, ComplexF64)
     i = Index(QN(1) => 5, QN(0) => 3)
     M = random_itensor(elt, dag(i)', i)
 
     @testset "Maxdim $(maxdim)" for maxdim in 1:8
-        B, Y, Ybar, spec = transform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize=false, unitarize=false)
+        B, Y, Ybar, spec = biorthoblocktransform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize=false, unitarize=false)
         Mt = Y * B * Ybar
     
         F = eigen(matrix(M))
@@ -28,7 +28,7 @@ end
     M = random_itensor(elt, dag(i)', i)
 
     @testset "Maxdim $(maxdim)" for maxdim in 1:8
-        B, Y, Ybar, spec = transform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize=false, unitarize=false)
+        B, Y, Ybar, spec = biorthoblocktransform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize=false, unitarize=false)
         Mt = Y * B * Ybar
     
         F = eigen(matrix(M))
@@ -53,7 +53,7 @@ end
     @testset "Maxdim $maxdim" for maxdim in 1:8
         @testset "Biorthonormalize $biorthonormalize" for biorthonormalize in [true, false]
             @testset "Unitarize $unitarize" for unitarize in [true, false]            
-                B, Y, Ybar, spec = transform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize, unitarize)
+                B, Y, Ybar, spec = biorthoblocktransform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize, unitarize)
             
                 K = Y * replaceind(Ybar, i => i')
                 @test matrix(K) ≈ I

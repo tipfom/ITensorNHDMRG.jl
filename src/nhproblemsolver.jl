@@ -19,12 +19,12 @@ function nhproblemsolver!(
         (fA, fAH),
         Θr,
         Θl,
-        2,
+        1,
         eigsolve_which_eigenvalue,
         BiArnoldi(;
             tol=eigsolve_tol,
-            krylovdim=eigsolve_krylovdim,
-            maxiter=eigsolve_maxiter,
+            krylovdim=15,
+            maxiter=5,
             verbosity=eigsolve_verbosity,
         ),
     )
@@ -52,10 +52,10 @@ function nhproblemsolver!(
         @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
 
         vals, V, W, info = bieigsolve(
-            (fA, fAH),
+            (fAH, fA),
             Θr,
             Θl,
-            2,
+            1,
             eigsolve_which_eigenvalue,
             BiArnoldi(;
                 tol=eigsolve_tol,
@@ -66,7 +66,7 @@ function nhproblemsolver!(
         )
     end
 
-    return first(vals), first(V), first(W)
+    return first(vals), first(W), first(V)
 end
 
 function nhproblemsolver!(
@@ -110,6 +110,18 @@ function nhproblemsolver!(
     return first(vals), noprime(first(vecsH)), noprime(first(vecs))
 end
 
+function selecteigenvalue(f::Function, x)
+    return f(x)
+end
+
+function selecteigenvalue(f::Number, x)
+    return f
+end
+
+function selecteigenvalue(f, x)
+    return x
+end
+
 function iteraterayleighquotient(
     PH,
     left,
@@ -122,7 +134,7 @@ function iteraterayleighquotient(
 )
     ρ = inner(left, productr(PH, right)) / inner(left, right)
 
-    λt = eigsolve_which_eigenvalue isa Function ? eigsolve_which_eigenvalue(ρ) : ρ
+    λt = selecteigenvalue(eigsolve_which_eigenvalue, ρ)
 
     nr, info = linsolve(
         x -> productr(PH, x),
@@ -177,7 +189,7 @@ function nhproblemsolver!(
 
         normalize!(Θl)
         normalize!(Θr)
-        ov = inner(Θl, Θr)
+        ov = complex(inner(Θl, Θr))
         Θl /= conj(sqrt(ov))
         Θr /= sqrt(ov)
     end
