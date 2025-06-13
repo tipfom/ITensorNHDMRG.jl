@@ -12,19 +12,20 @@ function nhproblemsolver!(
     eigsolve_which_eigenvalue,
     max_krylovdim=200,
 )
-    fA = x -> productr(PH, x)
-    fAH = x -> productl(PH, x)
-
+    fA = x -> product(PH, x)
+    fAH = x -> adjointproduct(PH, x)
+    f = (fA, fAH)
+    
     vals, V, W, info = bieigsolve(
-        (fA, fAH),
+        f,
         Θr,
         Θl,
         1,
         eigsolve_which_eigenvalue,
         BiArnoldi(;
             tol=eigsolve_tol,
-            krylovdim=15,
-            maxiter=5,
+            krylovdim=eigsolve_krylovdim,
+            maxiter=eigsolve_maxiter,
             verbosity=eigsolve_verbosity,
         ),
     )
@@ -52,7 +53,7 @@ function nhproblemsolver!(
         @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
 
         vals, V, W, info = bieigsolve(
-            (fAH, fA),
+            f,
             Θr,
             Θl,
             1,
@@ -80,8 +81,8 @@ function nhproblemsolver!(
     eigsolve_verbosity,
     eigsolve_which_eigenvalue,
 )
-    fA = x -> productr(PH, x)
-    fAH = x -> productl(PH, x)
+    fA = x -> product(PH, x)
+    fAH = x -> adjointproduct(PH, x)
 
     valsH, vecsH = eigsolve(
         fAH,
@@ -132,12 +133,12 @@ function iteraterayleighquotient(
     eigsolve_verbosity,
     eigsolve_which_eigenvalue,
 )
-    ρ = inner(left, productr(PH, right)) / inner(left, right)
+    ρ = inner(left, product(PH, right)) / inner(left, right)
 
     λt = selecteigenvalue(eigsolve_which_eigenvalue, ρ)
 
     nr, info = linsolve(
-        x -> productr(PH, x),
+        x -> product(PH, x),
         right,
         -λt;
         tol=eigsolve_tol,
@@ -146,7 +147,7 @@ function iteraterayleighquotient(
         verbosity=eigsolve_verbosity,
     )
     nl, info = linsolve(
-        x -> productl(PH, x),
+        x -> adjointproduct(PH, x),
         left,
         -conj(λt);
         tol=eigsolve_tol,
@@ -194,7 +195,7 @@ function nhproblemsolver!(
         Θr /= sqrt(ov)
     end
 
-    fx = inner(Θl, productr(PH, Θr)) / inner(Θl, Θr)
+    fx = inner(Θl, product(PH, Θr)) / inner(Θl, Θr)
 
     return fx, Θl, Θr
 end

@@ -190,10 +190,12 @@ function nhdmrg(
                     checkflux(PH)
                 end
 
-                Θr = psir[b] * psir[b + 1]
-                Θl = psil[b] * psil[b + 1]
+                begin 
+                    Θl = psil[b] * psil[b + 1]
+                    Θr = psir[b] * psir[b + 1]
+                end 
 
-                energy, v, w = nhproblemsolver!(
+                energy, nΘl, nΘr = nhproblemsolver!(
                     Algorithm(alg),
                     PH,
                     Θl,
@@ -212,15 +214,15 @@ function nhdmrg(
                     # Use noise term when determining new MPS basis.
                     # This is used to preserve the element type of the MPS.
                     elt = real(scalartype(psir))
-                    drho = elt(noise(sweeps, sw)) * noiseterm(PH, v, w, ortho)
+                    drho = elt(noise(sweeps, sw)) * noiseterm(PH, nΘl, nΘr, ortho)
                 end
 
                 spec = nhreplacebond!(
                     psil,
                     psir,
                     b,
-                    v,
-                    w,
+                    nΘl, 
+                    nΘr,
                     biorthoalg;
                     ortho,
                     eigen_perturbation=drho,

@@ -15,6 +15,8 @@ function ProjNHMPO_MPS(H::MPO, mpsvl::Vector{MPS}, mpsvr::Vector{MPS}; weight=1.
     )
 end
 
+(P::ProjNHMPO_MPS)(v::ITensor) = product(P, v)
+
 ITensorMPS.nsite(P::ProjNHMPO_MPS) = ITensorMPS.nsite(P.PH)
 
 function ITensorMPS.set_nsite!(Ps::ProjNHMPO_MPS, nsite)
@@ -33,18 +35,18 @@ function ITensorMPS.site_range(P::ProjNHMPO_MPS)
     return r
 end
 
-function productl(P::ProjNHMPO_MPS, vl::ITensor)::ITensor
-    Pv = productl(P.PH, vl)
+function adjointproduct(P::ProjNHMPO_MPS, v::ITensor)::ITensor
+    Pv = adjointproduct(P.PH, v)
     for p in P.pm
-        Pv += P.weight * productl(p, vl)
+        Pv += P.weight * adjointproduct(p, v)
     end
     return Pv
 end
 
-function productr(P::ProjNHMPO_MPS, vr::ITensor)::ITensor
-    Pv = productr(P.PH, vr)
+function product(P::ProjNHMPO_MPS, v::ITensor)::ITensor
+    Pv = product(P.PH, v)
     for p in P.pm
-        Pv += P.weight * productr(p, vr)
+        Pv += P.weight * product(p, v)
     end
     return Pv
 end
@@ -67,7 +69,10 @@ function ITensorMPS.position!(P::ProjNHMPO_MPS, psil::MPS,psir::MPS, pos::Int)
     return P
 end
 
+ITensorMPS.position!(P::ProjNHMPO_MPS, psi::MPS, pos::Int) = ITensorMPS.position!(P, psi, psi, pos)
+
 ITensorMPS.noiseterm(P::ProjNHMPO_MPS, thetal::ITensor, thetar::ITensor, ortho::String) = ITensorMPS.noiseterm(P.PH, thetal, thetar, ortho)
+ITensorMPS.noiseterm(P::ProjNHMPO_MPS, theta::ITensor, ortho::String) = ITensorMPS.noiseterm(P.PH, theta, theta, ortho)
 
 function ITensorMPS.checkflux(P::ProjNHMPO_MPS)
     checkflux(P.PH)

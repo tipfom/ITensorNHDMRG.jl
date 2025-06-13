@@ -106,7 +106,7 @@ function gap(
     H = hamiltonian(sites; tL, tR, V, t2, u, offset, scale)
 
     nsweeps = 100
-    maxdim = 100
+    maxdim = 300
     cutoff = [
         fill(1e-5, 6)...,
         fill(1e-7, 6)...,
@@ -116,6 +116,7 @@ function gap(
         1e-12,
     ]
     noise = [
+        fill(1e-2, 20)...,
         fill(1e-3, 20)...,
         fill(1e-5, 30)...,
         fill(1e-7, 6)...,
@@ -132,14 +133,19 @@ function gap(
     sweeps = Sweeps(nsweeps; maxdim, cutoff, noise)
 
     initial_guess = random_mps(sites, ψhf; linkdims=10)
+    Edmrg, psi = dmrg(H, initial_guess, sweeps)
+    @show Edmrg
+
     _, ψl0, ψr0= nhdmrg(
         H,
-        initial_guess,
-        initial_guess,
+        psi,
+        psi,
         sweeps;
         alg,
         biorthoalg,
-        unitarize=false
+        eigsolve_krylovdim=30,
+        eigsolve_maxiter=3,
+        # unitarize=false
     )
     E0 = inner(ψl0', H, ψr0) / inner(ψl0, ψr0)
     @info "Found groundstate with energy $E0"
@@ -159,8 +165,9 @@ function gap(
             weight,
             alg,
             biorthoalg,
-            unitarize=false,
-            biorthonormalize=false,
+            eigsolve_krylovdim=20,
+            # unitarize=false,
+            # biorthonormalize=false,
         )
 
         Ei = inner(ψli', H, ψri) / inner(ψli, ψri)

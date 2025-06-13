@@ -60,13 +60,42 @@ function nhfactorize(
     phir2 = replaceinds(phir, lindsr, lindsr')
     phil2 = replaceinds(phil, lindsl, lindsl')
 
-    rho = (phil2 * dag(phil) + phir2 * dag(phir)) / 2
+    rho = (phil2 * dag(phil) / norm(phil) + phir2 * dag(phir) / norm(phir)) / 2
     if !isnothing(drho)
         rho += drho
     end
 
     D, U, spec = eigen(rho, lindsl', dag(lindsl); ishermitian=true, kwargs...)
     U = noprime!(U)
+    return U, U, spec
+end
+
+
+function nhfactorize(
+    ::Algorithm"rho", phil, phir, drho, lindsl, lindsr, targettags; kwargs...
+)
+    !hassameinds(phil, phir) && error("Left and right states need to share the same indices")
+
+    # # Phys. Rev. B 105, 205125 
+    # # https://doi.org/10.1103/PhysRevB.105.205125
+    # # compute reduced density matrix and apply perturbation
+    # phir2 = replaceinds(phir, lindsr, lindsr')
+    # phil2 = replaceinds(phil, lindsl, lindsl')
+
+    # rho = (phil2 * dag(phil) / norm(phil) + phir2 * dag(phir) / norm(phir)) / 2
+    # if !isnothing(drho)
+    #     rho += drho
+    # end
+
+
+    U, S, V, spec = svd(phir, lindsr; kwargs...)
+    # noprime!(V)
+
+    # storage(S) .= one(eltype(S))
+
+    # @show inds(U)
+    # @show inds(V)
+
     return U, U, spec
 end
 
@@ -131,7 +160,8 @@ function nhreplacebond!(
     sD = sum(eigs(spec))
     normfactor = sqrt(abs(sD))
 
-    for (M, phi, U, U2) in [(Ml, phil, U, Ubar), (Mr, phir, Ubar, U)]
+    for (M, phi, U, U2, s) in [(Ml, phil, Ubar, U, "l"), (Mr, phir, Ubar, U, "r")]
+        # @info s
         L, R = if ortho == "left"
             U, phi * dag(U2) / normfactor
         elseif ortho == "right"
@@ -159,7 +189,7 @@ end
 function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=nothing, kwargs...)
     @assert siteinds(psir) == siteinds(psil) "both MPS need to share the same basis"
 
-    @assert inner(psil, psir) >= sqrt(cutoff) "The initial vectors are almost orthogonal, overlap is $(inner(psil, psir))"
+    @assert abs(inner(psil, psir)) >= sqrt(cutoff) "The initial vectors are almost orthogonal, overlap is $(inner(psil, psir))"
 
     sites = siteinds(psir)
 

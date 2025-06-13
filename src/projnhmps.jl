@@ -19,16 +19,18 @@ function ProjNHMPS(Ml::MPS, Mr::MPS)
 end
 
 function Base.copy(P::ProjNHMPS)
-    return ProjNHMPS(copy(P.projL), copy(P.projR), P.cached_site_range, copy(P.envL), copy(P.envR))
+    return ProjNHMPS(
+        copy(P.projL), copy(P.projR), P.cached_site_range, copy(P.envL), copy(P.envR)
+    )
 end
 
 ITensorMPS.nsite(P::ProjNHMPS) = ITensorMPS.nsite(P.projL)
 
 ITensorMPS.site_range(P::ProjNHMPS) = ITensorMPS.site_range(P.projL)
 
-function set_nsite!(P::ProjNHMPS, nsite)
-    set_nsite!(P.projL, nsite)
-    set_nsite!(P.projR, nsite)
+function ITensorMPS.set_nsite!(P::ProjNHMPS, nsite)
+    ITensorMPS.set_nsite!(P.projL, nsite)
+    ITensorMPS.set_nsite!(P.projR, nsite)
     return P
 end
 
@@ -44,9 +46,9 @@ function getLR(P::ITensorMPS.ProjMPS)
     return L, R
 end
 
-function getenvironments(P::ProjNHMPS)
-    ITensorMPS.site_range(P) == P.cached_site_range && return P.envL, P.envR
-
+function updateenvironments(P::ProjNHMPS)
+    ITensorMPS.site_range(P) == P.cached_site_range && return nothing 
+        
     Lr, Rr = getLR(P.projR)
     Ll, Rl = getLR(P.projL)
 
@@ -55,33 +57,33 @@ function getenvironments(P::ProjNHMPS)
 
     P.cached_site_range = ITensorMPS.site_range(P)
 
-    return P.envR, P.envL
+    return nothing
 end
 
-function productl(P::ProjNHMPS, vl::ITensor)::ITensor
-    if nsite(P) != 2
+function adjointproduct(P::ProjNHMPS, v::ITensor)::ITensor
+    if ITensorMPS.nsite(P) != 2
         error("Only two-site ProjMPS currently supported")
     end
 
-    envR, envL = getenvironments(P)
+    updateenvironments(P)
 
-    pv = scalar(envR * vl)
+    pv = scalar(P.envR * v)
 
-    Mv = pv * dag(envL)
+    Mv = pv * dag(P.envL)
 
     return noprime(Mv)
 end
 
-function productr(P::ProjNHMPS, vr::ITensor)::ITensor
-    if nsite(P) != 2
+function product(P::ProjNHMPS, v::ITensor)::ITensor
+    if ITensorMPS.nsite(P) != 2
         error("Only two-site ProjMPS currently supported")
     end
 
-    envR, envL = getenvironments(P)
+    updateenvironments(P)
 
-    pv = scalar(envL * vr)
+    pv = scalar(P.envL * v)
 
-    Mv = pv * dag(envR)
+    Mv = pv * dag(P.envR)
 
     return noprime(Mv)
 end

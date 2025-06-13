@@ -2,10 +2,10 @@ using ITensors, LinearAlgebra
 import ITensorNHDMRG: biorthoblocktransform
 
 @testset "Test Reconstruct QN Transformation $(elt)" for elt in (Float32, Float64, ComplexF32, ComplexF64)
-    i = Index(QN(1) => 5, QN(0) => 3)
+    i = Index(QN(1) => 15, QN(0) => 30)
     M = random_itensor(elt, dag(i)', i)
 
-    @testset "Maxdim $(maxdim)" for maxdim in 1:8
+    for maxdim in 1:dim(i)
         B, Y, Ybar, spec = biorthoblocktransform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize=false, unitarize=false)
         Mt = Y * B * Ybar
     
@@ -17,8 +17,6 @@ import ITensorNHDMRG: biorthoblocktransform
         end
         Me = F.vectors * Diagonal(v) * inv(F.vectors)
     
-        @show elt, maxdim
-        @show norm(matrix(Mt) - Me)
         @test isapprox(matrix(Mt), Me; atol=sqrt(eps(real(elt))), rtol=sqrt(eps(real(elt))))
     end
 end
@@ -27,7 +25,7 @@ end
     i = Index(10)
     M = random_itensor(elt, dag(i)', i)
 
-    @testset "Maxdim $(maxdim)" for maxdim in 1:8
+    @testset for maxdim in 1:dim(i)
         B, Y, Ybar, spec = biorthoblocktransform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize=false, unitarize=false)
         Mt = Y * B * Ybar
     
@@ -39,8 +37,6 @@ end
         end
         Me = F.vectors * Diagonal(v) * inv(F.vectors)
     
-        @show elt, maxdim
-        @show norm(matrix(Mt) - Me)
         @test isapprox(matrix(Mt), Me; atol=sqrt(eps(real(elt))), rtol=sqrt(eps(real(elt))))
     end
 end
@@ -50,9 +46,9 @@ end
     i = Index(QN(1) => 5, QN(0) => 3)
     M = random_itensor(elt, dag(i)', i)
 
-    @testset "Maxdim $maxdim" for maxdim in 1:8
-        @testset "Biorthonormalize $biorthonormalize" for biorthonormalize in [true, false]
-            @testset "Unitarize $unitarize" for unitarize in [true, false]            
+    @testset "Biorthonormalize $biorthonormalize" for biorthonormalize in [true, false]
+        @testset "Unitarize $unitarize" for unitarize in [true, false]            
+            @testset for maxdim in 1:8
                 B, Y, Ybar, spec = biorthoblocktransform(M, [dag(i)'], [i]; maxdim, mindim=0, cutoff=0, biorthonormalize, unitarize)
             
                 K = Y * replaceind(Ybar, i => i')

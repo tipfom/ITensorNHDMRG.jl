@@ -10,7 +10,7 @@ include("nhfactorize.jl")
 include("nhproblemsolver.jl")
 include("linalg.jl")
 
-include("fixnheigen.jl")
+# include("fixnheigen.jl")
 
 export nhdmrg
 

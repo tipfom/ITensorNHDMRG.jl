@@ -111,31 +111,30 @@ function ITensorMPS.noiseterm(P::TwoSidedProjMPO, thetal::ITensor, thetar::ITens
 end
 
 mutable struct ProjNHMPO
-    Pl::TwoSidedProjMPO
-    Pr::TwoSidedProjMPO
+    Padj::TwoSidedProjMPO
+    P::TwoSidedProjMPO
 end
 
 ProjNHMPO(H::MPO) = ProjNHMPO(TwoSidedProjMPO(dag(swapprime(conj(H), 0 => 1))), TwoSidedProjMPO(H))
-# ProjNHMPO(H::MPO) = ProjNHMPO(TwoSidedProjMPO(H), TwoSidedProjMPO(H))
 
-Base.copy(P::ProjNHMPO) = ProjNHMPO(copy(P.Pl), copy(P.Pr))
+Base.copy(P::ProjNHMPO) = ProjNHMPO(copy(P.Padj), copy(P.P))
 
 function ITensorMPS.set_nsite!(P::ProjNHMPO, nsite)
-    set_nsite!(P.Pl, nsite)
-    set_nsite!(P.Pr, nsite)
+    ITensorMPS.set_nsite!(P.Padj, nsite)
+    ITensorMPS.set_nsite!(P.P, nsite)
     return P
 end
 
-productl(P::ProjNHMPO, v::ITensor) = product(P.Pl, v)
-productr(P::ProjNHMPO, v::ITensor) = product(P.Pr, v)
+adjointproduct(P::ProjNHMPO, v::ITensor) = ITensorMPS.product(P.Padj, v)
+product(P::ProjNHMPO, v::ITensor) = ITensorMPS.product(P.P, v)
 
 function ITensorMPS.position!(P::ProjNHMPO, psil::MPS, psir::MPS, pos::Int)
-    ITensorMPS.position!(P.Pl, psir, psil, pos)
-    ITensorMPS.position!(P.Pr, psil, psir, pos)
+    ITensorMPS.position!(P.Padj, psir, psil, pos)
+    ITensorMPS.position!(P.P, psil, psir, pos)
     # ITensorMPS.position!(P.Pr, psir, psil, pos)
     return P
 end
 
 function ITensorMPS.noiseterm(P::ProjNHMPO, thetal::ITensor, thetar::ITensor, ortho::String)::ITensor
-    return ITensorMPS.noiseterm(P.Pr, thetal, thetar, ortho)
+    return ITensorMPS.noiseterm(P.P, thetal, thetar, ortho)
 end
