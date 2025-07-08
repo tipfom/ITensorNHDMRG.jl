@@ -199,13 +199,13 @@ function biorthoblocktransform(
     select = zeros(Bool, size(vals))
     minvalkept = min(firstindex(valsperm) + mindim, lastindex(valsperm))
     maxvalkept = min(firstindex(valsperm) + maxdim - 1, lastindex(valsperm))
-    
+   
     @inbounds for i in firstindex(valsperm):minvalkept
         select[valsperm[i]] = true
     end
     
     if use_absolute_cutoff
-        relative_cutoff = use_relative_cutoff ? vals[1] * cutoff : cutoff
+        relative_cutoff = use_relative_cutoff ? abs(vals[1]) * cutoff : cutoff
         @inbounds for i in minvalkept+1:maxvalkept
             abs(vals[valsperm[i]]) <= relative_cutoff && break
             select[valsperm[i]] = true
@@ -254,7 +254,7 @@ function biorthoblocktransform(
         if keepi >= length(F.values)
             push!(lB, F.Schur)
             push!(lY, F.vectors)
-            push!(lYbar, conj(F.vectors))
+            push!(lYbar, F.vectors)
             continue
         end
 
@@ -270,14 +270,13 @@ function biorthoblocktransform(
         Y = copy(F.vectors)
         @views Ys = Y[:, 1:keepi]
         @views Yd = Y[:, (keepi + 1):end]
-        Ybar = copy(F.vectors)
-        @views Ybars = Ybar[:, 1:keepi]
-        @views Ybard = Ybar[:, (keepi + 1):end]
+        Ybars = copy(Ys) 
+        Ybard = copy(Yd)
 
         # solve the Sylvester equation AX - XC = D -> A X + X (-C) + (-D) = 0
         # X = sylvester(A, -C, -D)
         try
-            LAPACK.trsyl!('N', 'N', A, C, D, -1)
+            X = LAPACK.trsyl!('N', 'N', A, C, D, -1)
         catch e
             if e isa LAPACKException && e.info == 1
                 if verbosity > 0
@@ -287,10 +286,17 @@ function biorthoblocktransform(
                 throw(e)
             end
         end
+        X = D
 
+        # @show size(Ybard)
+        # @show size(X)
         # apply the transformation
-        mul!(Ybars, Ybard, Adjoint(D), 1.0, 1.0)
-        mul!(Yd, Ys, D, -1.0, 1.0)
+        # Ybars2 = adjoint(Ybars) + X * adjoint(Ybard)
+        # @info "HI"
+        # mul!(Ybars, Ybard, Adjoint(X), 1.0, 1.0)
+        # mul!(Yd, Ys, D, -1.0, 1.0)
+
+        # @assert adjoint(Ybars) * Ys ≈ I
 
         # K = zero(M)
         # K[1:keep, 1:keep] .= A
@@ -299,46 +305,47 @@ function biorthoblocktransform(
         # K, Y, Ybar
         push!(lB, A)
         push!(lY, Ys)
-        push!(lYbar, conj(Ybars))
+        push!(lYbar, Ybars)
     end
 
-    if biorthonormalize
-        for i in eachindex(lB)
-            size(lB[i], 1) == 0 && continue
-            # Gram-Schmidt algorithm on the columns of Y and Ybar
-            # This is Technique 3 in the paper
+    # for i in eachindex(lB)
+    #     size(lB[i], 1) == 0 && continue
+    #     # Gram-Schmidt algorithm on the columns of Y and Ybar
+    #     # This is Technique 3 in the paper
 
-            Y = lY[i]
-            Ybar = lYbar[i]
+    #     Y = lY[i]
+    #     Ybar = lYbar[i]
 
-            for k in axes(Y, 2)
-                for j in firstindex(Y, 1):(k - 1)
-                    # this should always be one
-                    n = transpose(Ybar[:, j]) * Y[:, j]
-                    # @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
+    #     for k in axes(Y, 2)
+    #         for j in firstindex(Y, 1):(k - 1)
+    #             # this should always be one
+    #             n = adjoint(Ybar[:, j]) * Y[:, j]
+    #             # @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
 
-                    Y[:, k] -= ((transpose(Y[:, k]) * Ybar[:, j]) / n) * Y[:, j]
-                    Ybar[:, k] -= ((transpose(Ybar[:, k]) * Y[:, j]) / n) * Ybar[:, j]
-                end
+    #             Y[:, k] -= ((adjoint(Y[:, k]) * Ybar[:, j]) / n) * Y[:, j]
+    #             Ybar[:, k] -= ((adjoint(Ybar[:, k]) * Y[:, j]) / n) * Ybar[:, j]
+    #         end
 
-                # normalize the remainder 
-                n = sqrt(transpose(Ybar[:, k]) * Y[:, k])
-                Y[:, k] ./= n
-                Ybar[:, k] ./= n
-            end
-        end
-    end
+    #         # normalize the remainder 
+    #         n = sqrt(adjoint(Ybar[:, k]) * Y[:, k])
+    #         Y[:, k] ./= n
+    #         Ybar[:, k] ./= n
+    #     end
 
-    if unitarize
-        for i in eachindex(lB)
-            size(lB[i], 1) == 0 && continue
-            # Unitarize both Y and Ybar
-            # This is Technique 4 in the paper
-            F = svd(lY[i])
-            lY[i] = F.U * F.Vt
-            lYbar[i] = conj(lY[i])
-        end
-    end
+    #     @assert adjoint(Ybar) * Y ≈ I
+    # end
+
+
+    # if unitarize
+    #     for i in eachindex(lB)
+    #         size(lB[i], 1) == 0 && continue
+    #         # Unitarize both Y and Ybar
+    #         # This is Technique 4 in the paper
+    #         F = svd(lY[i])
+    #         lY[i] = F.U * F.Vt
+    #         lYbar[i] = conj(lY[i])
+    #     end
+    # end
 
     return lB, lY, lYbar, Spectrum(eigvalskept, truncerr)
 end
