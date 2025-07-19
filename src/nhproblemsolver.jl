@@ -517,10 +517,13 @@ function nhproblemsolver!(
     AT(x, OP) = conj(Adag(conj(x), OP))
     ATdag(x, OP) = conj(A(conj(x), OP))
 
-    @info "Hello there, General"
 
     fA = a::ITensor -> product(PH, a)::ITensor
     fAH = a::ITensor -> adjointproduct(PH, a)::ITensor
+
+    # Θr, info = exponentiate(fA, -1, Θr; tol=1e-10, krylovdim=20, maxiter=5, verbosity=eigsolve_verbosity)
+    # Θl, info = exponentiate(fAH, -1, Θl; tol=1e-10, krylovdim=20, maxiter=5, verbosity=eigsolve_verbosity)
+
     f = (fA, fAH)
 
     vals, (V, W), info = bieigsolve(
@@ -537,31 +540,31 @@ function nhproblemsolver!(
         ),
     )
 
-    @show λ = first(vals)
+    # λ = first(vals)
     Θl = first(W)
     Θr = first(V)
 
-    X(x, OP) = -conj(λ) * A(x, OP) - λ * Adag(x, OP) + abs2(λ) * x
+    # X(x, OP) = -conj(λ) * A(x, OP) - λ * Adag(x, OP) + abs2(λ) * x
 
-    Q(x) = product(PAHA, x) + X(x, PAr)
-    Q̃(x) = product(PAAH, x) + X(x, PAl)
+    # Q(x) = product(PAHA, x) + X(x, PAr)
+    # Q̃(x) = product(PAAH, x) + X(x, PAl)
 
-    Qdag(x) = Q(x)
-    Q̃dag(x) = Q̃(x)
+    # Qdag(x) = Q(x)
+    # Q̃dag(x) = Q̃(x)
 
-    valsl, lvecsl, infol = eigsolve(Q̃, Θl, 1, :SR; krylovdim=5, maxiter=2, tol=1e-10, verbosity=-1, ishermitian=true)
-    valsr, lvecsr, infor = eigsolve(Q, Θr, 1, :SR; krylovdim=5, maxiter=2, tol=1e-10, verbosity=-1, ishermitian=true)
+    # valsl, lvecsl, infol = eigsolve(Q̃, Θl, 1, :SR; krylovdim=5, maxiter=2, tol=1e-10, verbosity=-1, ishermitian=true)
+    # valsr, lvecsr, infor = eigsolve(Q, Θr, 1, :SR; krylovdim=5, maxiter=2, tol=1e-10, verbosity=-1, ishermitian=true)
 
-    # valsl, lvecsl, rvecsl, infol = svdsolve((Q̃dag, Q̃), Θl, 1, :SR; krylovdim=40, maxiter=2, tol=1e-10, verbosity=-1)
-    # valsr, lvecsr, rvecsr, infor = svdsolve((Qdag, Q), Θr, 1, :SR; krylovdim=40, maxiter=2, tol=1e-10, verbosity=-1)
+    # # valsl, lvecsl, rvecsl, infol = svdsolve((Q̃dag, Q̃), Θl, 1, :SR; krylovdim=40, maxiter=2, tol=1e-10, verbosity=-1)
+    # # valsr, lvecsr, rvecsr, infor = svdsolve((Qdag, Q), Θr, 1, :SR; krylovdim=40, maxiter=2, tol=1e-10, verbosity=-1)
     
-    # @show valsl[1], valsr[1]
+    # # @show valsl[1], valsr[1]
     
-    Θl, Θr = lvecsl[1], lvecsr[1]
+    # Θl, Θr = lvecsl[1], lvecsr[1]
     
     # @show inner(Θl, A(Θr, PH)) / (dag(Θl) * L * prime(Θr, "Link") * R)[]
 
-    return inner(Θl, A(Θr, PH)), Θl, Θr
+    return inner(Θl, A(Θr, PH)) / inner(Θl, Θr), Θl, Θr
 end
 
 # function nhproblemsolver!(

@@ -230,16 +230,16 @@ function nhdmrg(
 
                 L = ITensor(1) 
                 R = ITensor(1)
-                for i in 1:b-1 
-                    L *= dag(psil[i])
-                    L *= prime(psir[i], "Link")
-                end
-                for i in length(psil):-1:b+2
-                    R *= dag(psil[i])
-                    R *= prime(psir[i], "Link")
-                end
+                # for i in 1:b-1 
+                #     L *= dag(psil[i])
+                #     L *= prime(psir[i], "Link")
+                # end
+                # for i in length(psil):-1:b+2
+                #     R *= dag(psil[i])
+                #     R *= prime(psir[i], "Link")
+                # end
 
-                @show inner(psil', A, psir) / inner(psil, psir)
+                # @show inner(psil', A, psir) / inner(psil, psir)
 
                 energy, nΘl, nΘr = nhproblemsolver!(
                     Algorithm(alg),
@@ -255,6 +255,20 @@ function nhdmrg(
                     L, R,
                     PPPP
                 )
+
+                nΘl /= sqrt(inner(nΘl, nΘl))
+                nΘr /= sqrt(inner(nΘr, nΘr))
+
+                begin 
+                    overlap = inner(nΘl, nΘr)
+                    if isreal(overlap)
+                        nΘl /= sqrt(abs(overlap))
+                        nΘr /= sqrt(abs(overlap)) * sign(overlap)
+                    else
+                        nΘl /= sqrt(conj(overlap))
+                        nΘr /= sqrt(overlap)
+                    end
+                end
 
                 ortho = ha == 1 ? "left" : "right"
 

@@ -1,6 +1,6 @@
 using ITensors, ITensorMPS
 # using GLMakie
-# using Revise
+using Revise
 using ITensorNHDMRG: nhdmrg
 using ArgParse
 using HDF5
@@ -16,11 +16,11 @@ function parse_commandline()
         "--alg"
         help = "local eigenvalue algorithm, either `onesided` or `twosided`"
         arg_type = String
-        default = "twosided"
+        default = "stabilized"
         "--biorthoalg"
         help = "biorthogonalization routine, either `biorthoblock` or `lrdensity`"
         arg_type = String
-        default = "biorthoblock"
+        default = "fidelity"
         "--weight"
         help = "weight to enforce the biorthogonality constraint w.r.t. eigenstates already found"
         arg_type = Float64
@@ -90,8 +90,8 @@ function gap(
     V=7.0,
     t2=1.0,
     u=0.0,
-    alg="twosided",
-    biorthoalg="biorthoblock",
+    alg="stabilized",
+    biorthoalg="fidelity",
     nexcitedstates=1,
     weight=20.0,
     offset=nothing,
@@ -105,7 +105,7 @@ function gap(
     @info "starting constructing the Hamiltonian"
     H = hamiltonian(sites; tL, tR, V, t2, u, offset, scale)
 
-    nsweeps = 100
+    nsweeps = 20
     maxdim = 300
     cutoff = [
         fill(1e-5, 6)...,
@@ -136,16 +136,17 @@ function gap(
     Edmrg, psi = dmrg(H, initial_guess, sweeps)
     @show Edmrg
 
+    sweeps = Sweeps(nsweeps; maxdim=300, cutoff, noise)
+
+
     _, ψl0, ψr0= nhdmrg(
         H,
-        psi,
-        psi,
+        initial_guess,
+        initial_guess,
         sweeps;
         alg,
         biorthoalg,
-        eigsolve_krylovdim=30,
-        eigsolve_maxiter=3,
-        # unitarize=false
+        outputlevel=2
     )
     E0 = inner(ψl0', H, ψr0) / inner(ψl0, ψr0)
     @info "Found groundstate with energy $E0"
@@ -166,8 +167,6 @@ function gap(
             alg,
             biorthoalg,
             eigsolve_krylovdim=20,
-            # unitarize=false,
-            # biorthonormalize=false,
         )
 
         Ei = inner(ψli', H, ψri) / inner(ψli, ψri)
