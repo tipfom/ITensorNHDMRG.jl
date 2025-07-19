@@ -14,7 +14,7 @@ function nhdmrg(H::MPO, psil0::MPS, psir0::MPS, sweeps::Sweeps; kwargs...)
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO(H)
     
-    return nhdmrg(PH, psil0, psir0, sweeps; kwargs..., A =H)
+    return nhdmrg(PH, psil0, psir0, sweeps; kwargs...)
 end
 
 function nhdmrg(
@@ -46,7 +46,7 @@ function nhdmrg(
     # and minimize permutations
     H = permute(H, (linkind, siteinds, linkind))
     PH = ProjNHMPO_MPS(H, Msl, Msr; weight)
-    return nhdmrg(PH, psil0, psir0, sweeps; kwargs..., A = H)
+    return nhdmrg(PH, psil0, psir0, sweeps; kwargs...)
 end
 
 """
@@ -134,14 +134,10 @@ function nhdmrg(
     outputlevel=1,
     # eigsolve kwargs
     eigsolve_tol=1e-14,
-    eigsolve_krylovdim=3,
-    eigsolve_maxiter=1,
+    eigsolve_krylovdim=20,
+    eigsolve_maxiter=2,
     eigsolve_verbosity=0,
     eigsolve_which_eigenvalue=:SR,
-    eigsolve_alpha=0.01,
-    which_decomp=nothing,
-    svd_alg=nothing,
-    A,
     biorthokwargs...,
 )
     if length(psir0) == 1
@@ -186,17 +182,6 @@ function nhdmrg(
 
     PH = ITensorMPS.position!(PH, psil, psir, 1)
     
-    PAHA = ProjNHMPO(apply(noprime(swapprime(dag(A), 0=>1), "Link"), A; cutoff=1e-10))
-    PAAH = ProjNHMPO(apply(A, noprime(swapprime(dag(A), 0=>1), "Link"); cutoff=1e-10))
-    PAl = ProjNHMPO(A)
-    PAr = ProjNHMPO(A)
-    
-
-    PAHA = ITensorMPS.position!(PAHA, psir, psir, 1)
-    PAAH = ITensorMPS.position!(PAAH, psil, psil, 1)
-    PAl = ITensorMPS.position!(PAl, psil, psil, 1)
-    PAr = ITensorMPS.position!(PAr, psir, psir, 1)
-    
     energy = 0.0
 
     for sw in 1:nsweep(sweeps)
@@ -211,13 +196,6 @@ function nhdmrg(
 
                 PH = ITensorMPS.position!(PH, psil, psir, b)
 
-                PAHA = ITensorMPS.position!(PAHA, psir, psir, b)
-                PAAH = ITensorMPS.position!(PAAH, psil, psil, b)
-                PAl = ITensorMPS.position!(PAl, psil, psil, b)
-                PAr = ITensorMPS.position!(PAr, psir, psir, b)
-
-                PPPP = (PAHA, PAAH, PAl, PAr)
-
                 @debug_check begin
                     checkflux(psir)
                     checkflux(PH)
@@ -228,32 +206,16 @@ function nhdmrg(
                     Θr = psir[b] * psir[b + 1]
                 end 
 
-                L = ITensor(1) 
-                R = ITensor(1)
-                # for i in 1:b-1 
-                #     L *= dag(psil[i])
-                #     L *= prime(psir[i], "Link")
-                # end
-                # for i in length(psil):-1:b+2
-                #     R *= dag(psil[i])
-                #     R *= prime(psir[i], "Link")
-                # end
-
-                # @show inner(psil', A, psir) / inner(psil, psir)
-
                 energy, nΘl, nΘr = nhproblemsolver!(
                     Algorithm(alg),
-                    (PH, 1 / inner(psil, psir)),
+                    PH,
                     Θl,
                     Θr;
                     eigsolve_tol,
                     eigsolve_krylovdim,
                     eigsolve_maxiter,
                     eigsolve_verbosity,
-                    eigsolve_which_eigenvalue,
-                    α=eigsolve_alpha,
-                    L, R,
-                    PPPP
+                    eigsolve_which_eigenvalue
                 )
 
                 nΘl /= sqrt(inner(nΘl, nΘl))
@@ -271,52 +233,6 @@ function nhdmrg(
                 end
 
                 ortho = ha == 1 ? "left" : "right"
-
-                drhol = nothing
-                drhor = nothing
-                # if noise(sweeps, sw) > 0
-                #     # Use noise term when determining new MPS basis.
-                #     # This is used to preserve the element type of the MPS.
-                #     elt = real(scalartype(psir))
-                #     drhol = elt(noise(sweeps, sw)) * noiseterm(PAl, nΘl, nΘl, ortho)
-                #     drhor = elt(noise(sweeps, sw)) * noiseterm(PAr, nΘr, nΘr, ortho)
-                # end
-
-                # specl = replacebond!(
-                #     psil,
-                #     b,
-                #     nΘl;
-                #     maxdim=maxdim(sweeps, sw),
-                #     mindim=mindim(sweeps, sw),
-                #     cutoff=1e-8,
-                #     # eigen_perturbation=drhol,
-                #     ortho,
-                #     # normalize=true,
-                #     normalize=false,
-                #     which_decomp,
-                #     svd_alg,
-                # )
-                # specr = replacebond!(
-                #     psir,
-                #     b,
-                #     nΘr;
-                #     maxdim=maxdim(sweeps, sw),
-                #     mindim=mindim(sweeps, sw),
-                #     cutoff=1e-8,
-                #     # eigen_perturbation=drhor,
-                #     ortho,
-                #     normalize=false,
-                #     # normalize=true,
-                #     which_decomp,
-                #     svd_alg,
-                # )
-
-                # # @show energy
-                # @show inner(psil, psir)
-                # @show inner(psil, apply(A, psir))
-                # @show inner(psil, apply(A, psir)) / inner(psil, psir)
-
-                # maxtruncerr = max(maxtruncerr, specl.truncerr, specr.truncerr)
 
                 drho = nothing
                 if noise(sweeps, sw) > 0
