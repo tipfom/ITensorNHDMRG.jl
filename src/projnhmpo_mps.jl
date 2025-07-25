@@ -8,10 +8,10 @@ end
 
 Base.copy(P::ProjNHMPO_MPS) = ProjNHMPO_MPS(copy(P.PH), copy.(P.pm), P.weight)
 
-function ProjNHMPO_MPS(H::MPO, mpsvl::Vector{MPS}, mpsvr::Vector{MPS}; weight=1.0)
+function ProjNHMPO_MPS(H::MPO, mpsvl::Vector{MPS}, mpsvr::Vector{MPS}; weight=1.0, keepadj=true)
     @assert length(mpsvl) == length(mpsvr)
     return ProjNHMPO_MPS(
-        ProjNHMPO(H), [ProjNHMPS(mpsvl[i], mpsvr[i]) for i in eachindex(mpsvl)], weight
+        ProjNHMPO(H; keepadj), [ProjNHMPS(mpsvl[i], mpsvr[i]) for i in eachindex(mpsvl)], weight
     )
 end
 

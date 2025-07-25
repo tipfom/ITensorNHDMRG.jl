@@ -1,9 +1,41 @@
 function nhfactorize(
-    ::Algorithm"fidelity", phil, phir, drho, lindsl, lindsr, targettags, idleft, idright; kwargs...
+    ::Algorithm"physical", phil, phir, drho, lindsl, lindsr, targettags, identities; kwargs...
+)
+    # compute reduced density matrix and apply perturbation
+    rho = dag(replaceinds(phil, lindsl, lindsl')) 
+    if !isnothing(identities)
+        rho *= identities[3]
+    end
+    rho *= prime(phir, "Link")
+    @show inds(rho)
+
+    if !isnothing(drho)
+        rho += drho
+    end
+
+    B, Y, Ybar, spec = biorthoblocktransform(rho, lindsl', dag(lindsr); kwargs...)
+    noprime!(Y)
+    noprime!(Ybar)
+    Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
+    Ybar = replacetags!(Ybar, tags(commonind(Ybar, B)), targettags)
+
+    @show inds(Y)
+    @show inds(Ybar)
+
+    return Y, dag(Ybar), spec
+end
+
+function nhfactorize(
+    ::Algorithm"fidelity", phil, phir, drho, lindsl, lindsr, targettags, identities; kwargs...
 )
     # Phys. Rev. B 105, 205125 
     # https://doi.org/10.1103/PhysRevB.105.205125
     # compute reduced density matrix and apply perturbation
+    idleft, idright = nothing, nothing 
+    if !isnothing(identities)
+        idleft, idright, _ = identities
+    end
+
     rhor = replaceinds(phir, lindsr, lindsr')
     if !isnothing(idright)
         rhor = prime(rhor, commonind(rhor, idright))
@@ -18,12 +50,7 @@ function nhfactorize(
     end
     rhol *= dag(phil)
  
-    # @show inds(phil)
-    # @show inds(idleft)
-    # @show inds(rhol)
-    # @show inds(rhor)
     !hassameinds(rhol, rhor) && error("Left and right states need to share the same indices")
-
 
     rho = (rhol + rhor) / 2
     if !isnothing(drho)
@@ -33,10 +60,6 @@ function nhfactorize(
     D, U, spec = eigen(rho, lindsl', dag(lindsl); ishermitian=true, kwargs...)
     U = noprime!(U)
     return U, U, spec
-
-    U, S, V, spec = svd(rho, lindsl', dag(lindsl); kwargs...)
-
-    return noprime(U), V, spec
 end
 
 function nhreplacebond!(
@@ -46,8 +69,7 @@ function nhreplacebond!(
     phil::ITensor,
     phir::ITensor,
     alg,
-    idleft=nothing,
-    idright=nothing;
+    identities=nothing;
     ortho=nothing,
     eigen_perturbation=nothing,
     # Decomposition kwargs
@@ -83,21 +105,18 @@ function nhreplacebond!(
         leftindsl,
         leftindsr,
         tags(commonind(Ml[b], Ml[b+1])),
-        idleft,
-        idright;
+        identities;
         mindim,
         maxdim,
         cutoff,
         kwargs...,
     )
 
-    noprime!(phil)
-
-    for (M, phi, U, U2) in [(Ml, phil, U, Ubar), (Mr, phir, U, Ubar)]
+    for (M, phi, U1, U2) in [(Ml, phil, Ubar, U), (Mr, phir, U, Ubar)]
         L, R = if ortho == "left"
-            U, phi * dag(U2)
+            U1, phi * dag(U2)
         elseif ortho == "right"
-            phi * dag(U2), U
+            phi * dag(U2), U1
         end
         M[b] = L
         M[b+1] = R
@@ -116,34 +135,33 @@ function biorthogonalize!(psil, psir, alg; mindim=nothing, maxdim=10, cutoff=not
     noprime!(psir)
     noprime!(psil)
 
-    function buildidentities(psi)
+    function buildidentities(psi1, psi2)
         M = ITensor[]
         for i in firstindex(sites):lastindex(sites)
             Mi = length(M) > 0 ? last(M) : ITensor(1)
 
-            Mi *= prime(psi[i], "Link")
-            Mi *= dag(psi[i])
+            Mi *= prime(psi1[i], "Link")
+            Mi *= dag(psi2[i])
             push!(M, Mi)
         end
         return M
     end
 
-    Ml = buildidentities(psil)
-    Mr = buildidentities(psir)
+    Mll = buildidentities(psil, psil)
+    Mrr = buildidentities(psir, psir)
+    Mlr = buildidentities(psir, psil)
 
     for i in (lastindex(sites)-1):-1:1
         phil = psil[i] * psil[i+1]
         phir = psir[i] * psir[i+1]
 
-        idright = nothing
-        idleft = nothing
+        identities = nothing 
         if i > 1
-            idright = Mr[i-1]
-            idleft = Ml[i-1]
+            identities = (Mll[i-1], Mrr[i-1], Mlr[i-1])
         end
 
         nhreplacebond!(
-            psil, psir, i, phil, phir, "fidelity", idleft, idright; ortho="right", mindim, maxdim, cutoff, kwargs...
+            psil, psir, i, phil, phir, alg, identities; ortho="right", mindim, maxdim, cutoff, kwargs...
         )
     end
 

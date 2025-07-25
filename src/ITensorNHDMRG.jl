@@ -14,4 +14,7 @@ include("linalg.jl")
 
 export nhdmrg
 
+include("nhtdvp.jl")
+export nhtdvpoperator
+
 end

@@ -40,8 +40,13 @@ function getLR(P::ITensorMPS.ProjMPS)
     L = dag(prime(P.M[P.lpos + 1], "Link"))
     !isnothing(lproj(P)) && (L *= lproj(P))
 
-    R = dag(prime(P.M[P.rpos - 1], "Link"))
-    !isnothing(rproj(P)) && (R *= rproj(P))
+    if ITensorMPS.nsite(P) == 1
+        R = ITensor(1)
+        !isnothing(rproj(P)) && (R *= rproj(P))
+    else
+        R = dag(prime(P.M[P.rpos - 1], "Link"))
+        !isnothing(rproj(P)) && (R *= rproj(P))
+    end
 
     return L, R
 end
@@ -75,9 +80,9 @@ function adjointproduct(P::ProjNHMPS, v::ITensor)::ITensor
 end
 
 function product(P::ProjNHMPS, v::ITensor)::ITensor
-    if ITensorMPS.nsite(P) != 2
-        error("Only two-site ProjMPS currently supported")
-    end
+    # if ITensorMPS.nsite(P) != 2
+    #     error("Only two-site ProjMPS currently supported")
+    # end
 
     updateenvironments(P)
 
@@ -87,6 +92,8 @@ function product(P::ProjNHMPS, v::ITensor)::ITensor
 
     return noprime(Mv)
 end
+
+ITensorMPS.position!(P::ProjNHMPS, psi::MPS, pos::Int) = ITensorMPS.position!(P, psi, psi, pos)
 
 function ITensorMPS.position!(P::ProjNHMPS, psil::MPS, psir::MPS, pos::Int)
     ITensorMPS.position!(P.projR, psil, pos)

@@ -134,7 +134,7 @@ function nhdmrg(
     outputlevel=1,
     # eigsolve kwargs
     eigsolve_tol=1e-14,
-    eigsolve_krylovdim=20,
+    eigsolve_krylovdim=15,
     eigsolve_maxiter=2,
     eigsolve_verbosity=0,
     eigsolve_which_eigenvalue=:SR,

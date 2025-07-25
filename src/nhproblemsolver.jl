@@ -12,13 +12,12 @@ function nhproblemsolver!(
     eigsolve_maxiter,
     eigsolve_verbosity,
     eigsolve_which_eigenvalue,
-    max_krylovdim=200,
 )
     fA = x -> product(PH, x)
     fAH = x -> adjointproduct(PH, x)
     f = (fA, fAH)
     
-    vals, V, W, info = bieigsolve(
+    vals, (V, W), info = bieigsolve(
         f,
         Θr,
         Θl,
@@ -31,44 +30,7 @@ function nhproblemsolver!(
             verbosity=eigsolve_verbosity,
         ),
     )
-
-    while length(vals) < 1
-        # did not converge, retrying 
-        eigsolve_maxiter = max(eigsolve_maxiter + 1, div(5eigsolve_maxiter, 3))
-        eigsolve_krylovdim = max(eigsolve_krylovdim + 1, div(5eigsolve_krylovdim, 3))
-
-        if eigsolve_krylovdim > max_krylovdim
-            error("Did not converge")
-            return eigproblemsolver!(
-                Algorithm("onesided"), #
-                PH,
-                Θl,
-                Θr;
-                eigsolve_tol,
-                eigsolve_krylovdim,
-                eigsolve_maxiter,
-                eigsolve_verbosity,
-                eigsolve_which_eigenvalue,
-            )
-        end
-
-        @warn "Eigensolver did not converge, consider increasing the krylovdimension or iterations; now using eigsolve_krylovdim=$eigsolve_krylovdim and eigsolve_maxiter=$eigsolve_maxiter."
-
-        vals, V, W, info = bieigsolve(
-            f,
-            Θr,
-            Θl,
-            1,
-            eigsolve_which_eigenvalue,
-            BiArnoldi(;
-                tol=eigsolve_tol,
-                krypsil0lovdim=eigsolve_krylovdim,
-                maxiter=eigsolve_maxiter,
-                verbosity=eigsolve_verbosity,
-            ),
-        )
-    end
-
+    
     return first(vals), first(W), first(V)
 end
 
@@ -228,7 +190,7 @@ function nhproblemsolver!(
     eigsolve_krylovdim,
     eigsolve_maxiter,
     eigsolve_verbosity,
-    eigsolve_which_eigenvalue,
+    eigsolve_which_eigenvalue
 )
     fA = a::ITensor -> product(PH, a)::ITensor
     fAH = a::ITensor -> adjointproduct(PH, a)::ITensor

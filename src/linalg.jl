@@ -124,9 +124,9 @@ function biorthoblocktransform(
     indsY = (i1, dag(l)')
     indsYbar = (i2, l)
 
-    nzblocksB = Vector{Block{2}}(undef, nnzblocksM)
-    nzblocksY = Vector{Block{2}}(undef, nnzblocksM)
-    nzblocksYbar = Vector{Block{2}}(undef, nnzblocksM)
+    nzblocksB = Vector{ITensors.Block{2}}(undef, nnzblocksM)
+    nzblocksY = Vector{ITensors.Block{2}}(undef, nnzblocksM)
+    nzblocksYbar = Vector{ITensors.Block{2}}(undef, nnzblocksM)
     for n in 1:nnzblocksM
         blockM = nzblocksM[n]
 
@@ -288,64 +288,52 @@ function biorthoblocktransform(
         end
         X = D
 
-        # @show size(Ybard)
-        # @show size(X)
-        # apply the transformation
-        # Ybars2 = adjoint(Ybars) + X * adjoint(Ybard)
-        # @info "HI"
-        # mul!(Ybars, Ybard, Adjoint(X), 1.0, 1.0)
-        # mul!(Yd, Ys, D, -1.0, 1.0)
+        mul!(Ybars, Ybard, Adjoint(X), 1.0, 1.0)
+        mul!(Yd, Ys, D, -1.0, 1.0)
 
-        # @assert adjoint(Ybars) * Ys ≈ I
-
-        # K = zero(M)
-        # K[1:keep, 1:keep] .= A
-        # K[keep+1:end, keep+1:end] .= C
-
-        # K, Y, Ybar
         push!(lB, A)
         push!(lY, Ys)
         push!(lYbar, Ybars)
     end
 
-    # for i in eachindex(lB)
-    #     size(lB[i], 1) == 0 && continue
-    #     # Gram-Schmidt algorithm on the columns of Y and Ybar
-    #     # This is Technique 3 in the paper
+    for i in eachindex(lB)
+        size(lB[i], 1) == 0 && continue
+        # Gram-Schmidt algorithm on the columns of Y and Ybar
+        # This is Technique 3 in the paper
 
-    #     Y = lY[i]
-    #     Ybar = lYbar[i]
+        Y = lY[i]
+        Ybar = lYbar[i]
 
-    #     for k in axes(Y, 2)
-    #         for j in firstindex(Y, 1):(k - 1)
-    #             # this should always be one
-    #             n = adjoint(Ybar[:, j]) * Y[:, j]
-    #             # @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
+        for k in axes(Y, 2)
+            for j in firstindex(Y, 1):(k - 1)
+                # this should always be one
+                n = adjoint(Ybar[:, j]) * Y[:, j]
+                # @assert isapprox(n, one(n); rtol=1e-4) "norm $n deviates significantly from one"
 
-    #             Y[:, k] -= ((adjoint(Y[:, k]) * Ybar[:, j]) / n) * Y[:, j]
-    #             Ybar[:, k] -= ((adjoint(Ybar[:, k]) * Y[:, j]) / n) * Ybar[:, j]
-    #         end
+                Y[:, k] -= ((adjoint(Y[:, k]) * Ybar[:, j]) / n) * Y[:, j]
+                Ybar[:, k] -= ((adjoint(Ybar[:, k]) * Y[:, j]) / n) * Ybar[:, j]
+            end
 
-    #         # normalize the remainder 
-    #         n = sqrt(adjoint(Ybar[:, k]) * Y[:, k])
-    #         Y[:, k] ./= n
-    #         Ybar[:, k] ./= n
-    #     end
+            # normalize the remainder 
+            n = sqrt(adjoint(Ybar[:, k]) * Y[:, k])
+            Y[:, k] ./= n
+            Ybar[:, k] ./= n
+        end
 
-    #     @assert adjoint(Ybar) * Y ≈ I
-    # end
+        @assert adjoint(Ybar) * Y ≈ I
+    end
 
 
-    # if unitarize
-    #     for i in eachindex(lB)
-    #         size(lB[i], 1) == 0 && continue
-    #         # Unitarize both Y and Ybar
-    #         # This is Technique 4 in the paper
-    #         F = svd(lY[i])
-    #         lY[i] = F.U * F.Vt
-    #         lYbar[i] = conj(lY[i])
-    #     end
-    # end
+    if unitarize
+        for i in eachindex(lB)
+            size(lB[i], 1) == 0 && continue
+            # Unitarize both Y and Ybar
+            # This is Technique 4 in the paper
+            F = svd(lY[i])
+            lY[i] = F.U * F.Vt
+            lYbar[i] = conj(lY[i])
+        end
+    end
 
     return lB, lY, lYbar, Spectrum(eigvalskept, truncerr)
 end

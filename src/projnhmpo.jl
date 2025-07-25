@@ -111,16 +111,18 @@ function ITensorMPS.noiseterm(P::TwoSidedProjMPO, thetal::ITensor, thetar::ITens
 end
 
 mutable struct ProjNHMPO
-    Padj::TwoSidedProjMPO
+    Padj::Union{Nothing, TwoSidedProjMPO}
     P::TwoSidedProjMPO
 end
 
-ProjNHMPO(H::MPO) = ProjNHMPO(TwoSidedProjMPO(dag(swapprime(conj(H), 0 => 1))), TwoSidedProjMPO(H))
+ProjNHMPO(H::MPO; keepadj=true) = ProjNHMPO(keepadj ? TwoSidedProjMPO(dag(swapprime(conj(H), 0 => 1))) : nothing, TwoSidedProjMPO(H))
 
-Base.copy(P::ProjNHMPO) = ProjNHMPO(copy(P.Padj), copy(P.P))
+(P::ProjNHMPO)(v::ITensor) = product(P, v)
+
+Base.copy(P::ProjNHMPO) = ProjNHMPO(isnothing(P.Padj) ? nothing : copy(P.Padj), copy(P.P))
 
 function ITensorMPS.set_nsite!(P::ProjNHMPO, nsite)
-    ITensorMPS.set_nsite!(P.Padj, nsite)
+    !isnothing(P.Padj) && ITensorMPS.set_nsite!(P.Padj, nsite)
     ITensorMPS.set_nsite!(P.P, nsite)
     return P
 end
@@ -128,12 +130,16 @@ end
 adjointproduct(P::ProjNHMPO, v::ITensor) = ITensorMPS.product(P.Padj, v)
 product(P::ProjNHMPO, v::ITensor) = ITensorMPS.product(P.P, v)
 
+ITensorMPS.position!(P::ProjNHMPO, psi::MPS, pos::Int) = ITensorMPS.position!(P, psi, psi, pos)
+
 function ITensorMPS.position!(P::ProjNHMPO, psil::MPS, psir::MPS, pos::Int)
-    ITensorMPS.position!(P.Padj, psir, psil, pos)
+    !isnothing(P.Padj) && ITensorMPS.position!(P.Padj, psir, psil, pos)
     ITensorMPS.position!(P.P, psil, psir, pos)
     # ITensorMPS.position!(P.Pr, psir, psil, pos)
     return P
 end
+
+ITensorMPS.noiseterm(P::ProjNHMPO, theta::ITensor, ortho::String) = ITensorMPS.noiseterm(P, theta, theta, ortho)
 
 function ITensorMPS.noiseterm(P::ProjNHMPO, thetal::ITensor, thetar::ITensor, ortho::String)::ITensor
     return ITensorMPS.noiseterm(P.P, thetal, thetar, ortho)
