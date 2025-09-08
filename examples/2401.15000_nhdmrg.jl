@@ -16,7 +16,7 @@ function parse_commandline()
         "--alg"
         help = "local eigenvalue algorithm, either `onesided` or `twosided`"
         arg_type = String
-        default = "stabilized"
+        default = "onesided"
         "--biorthoalg"
         help = "biorthogonalization routine, either `biorthoblock` or `lrdensity`"
         arg_type = String
@@ -101,6 +101,7 @@ function gap(
     tL = t1 - γ
     tR = t1 + γ
     # half filling
+    alg="twosided"
 
     @info "starting constructing the Hamiltonian"
     H = hamiltonian(sites; tL, tR, V, t2, u, offset, scale)
@@ -146,7 +147,9 @@ function gap(
         sweeps;
         alg,
         biorthoalg,
-        outputlevel=2
+        outputlevel=2,
+        eigsolve_krylovdim=30,
+        eigsolve_maxiter=3,
     )
     E0 = inner(ψl0', H, ψr0) / inner(ψl0, ψr0)
     @info "Found groundstate with energy $E0"
@@ -166,7 +169,8 @@ function gap(
             weight,
             alg,
             biorthoalg,
-            eigsolve_krylovdim=20,
+            eigsolve_krylovdim=30,
+            eigsolve_maxiter=3,
         )
 
         Ei = inner(ψli', H, ψri) / inner(ψli, ψri)

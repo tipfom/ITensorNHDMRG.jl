@@ -176,29 +176,3 @@ function selecttau(s::Symbol)
     end
     return -1
 end
-
-function selecteigenvalue(s)
-    return -1
-end
-
-function nhproblemsolver!(
-    ::Algorithm"stabilized",
-    PH,
-    Θl,
-    Θr;
-    eigsolve_tol,
-    eigsolve_krylovdim,
-    eigsolve_maxiter,
-    eigsolve_verbosity,
-    eigsolve_which_eigenvalue
-)
-    fA = a::ITensor -> product(PH, a)::ITensor
-    fAH = a::ITensor -> adjointproduct(PH, a)::ITensor
-
-    τ = selecttau(eigsolve_which_eigenvalue)
-
-    Θr, info = exponentiate(fA, τ, Θr; tol=eigsolve_tol, krylovdim=eigsolve_krylovdim, maxiter=eigsolve_maxiter, verbosity=eigsolve_verbosity)
-    Θl, info = exponentiate(fAH, τ, Θl; tol=eigsolve_tol, krylovdim=eigsolve_krylovdim, maxiter=eigsolve_maxiter, verbosity=eigsolve_verbosity)
-
-    return inner(Θl, fA(Θr)) / inner(Θl, Θr), Θl, Θr
-end
