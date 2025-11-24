@@ -10,11 +10,6 @@ include("nhfactorize.jl")
 include("nhproblemsolver.jl")
 include("linalg.jl")
 
-# include("fixnheigen.jl")
-
 export nhdmrg
-
-include("nhtdvp.jl")
-export nhtdvpoperator
 
 end
