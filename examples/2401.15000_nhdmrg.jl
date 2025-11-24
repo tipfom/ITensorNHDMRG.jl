@@ -1,46 +1,5 @@
 using ITensors, ITensorMPS
-# using GLMakie
-using Revise
-using ITensorNHDMRG: nhdmrg
-using ArgParse
-using HDF5
-
-function parse_commandline()
-    s = ArgParseSettings()
-
-    @add_arg_table! s begin
-        "-N"
-        help = "system size"
-        arg_type = Int
-        default = 10
-        "--alg"
-        help = "local eigenvalue algorithm, either `onesided` or `twosided`"
-        arg_type = String
-        default = "onesided"
-        "--biorthoalg"
-        help = "biorthogonalization routine, either `biorthoblock` or `lrdensity`"
-        arg_type = String
-        default = "fidelity"
-        "--weight"
-        help = "weight to enforce the biorthogonality constraint w.r.t. eigenstates already found"
-        arg_type = Float64
-        default = 20.0
-        "--offset"
-        help = "energy offset of the Hamiltonian"
-        arg_type = Float64 
-        default = 0.0
-        "--scale"
-        help = "energy rescaling of the Hamiltonian"
-        arg_type = Float64 
-        default = 1.0
-        "--filename"
-        help = "file to export results to"
-        arg_type = String
-        default = "export.hdf5"
-    end
-
-    return parse_args(s)
-end
+using ITensorNHDMRG
 
 function hamiltonian(sites; tL, tR, V, t2, u, offset=nothing, scale=one(tL))
     @assert length(sites) % 2 == 0
@@ -85,13 +44,13 @@ end
 
 function gap(
     N;
+    alg,
+    biorthoalg,
     t1=1.2,
     γ=0.1,
     V=7.0,
     t2=1.0,
     u=0.0,
-    alg="stabilized",
-    biorthoalg="fidelity",
     nexcitedstates=1,
     weight=20.0,
     offset=nothing,
@@ -101,45 +60,39 @@ function gap(
     tL = t1 - γ
     tR = t1 + γ
     # half filling
-    alg="twosided"
 
-    @info "starting constructing the Hamiltonian"
+    @info "Starting constructing the Hamiltonian"
     H = hamiltonian(sites; tL, tR, V, t2, u, offset, scale)
 
-    nsweeps = 20
+    nsweeps = 5
     maxdim = 300
     cutoff = [
-        fill(1e-5, 6)...,
-        fill(1e-7, 6)...,
-        fill(1e-9, 6)...,
-        fill(1e-10, 6)...,
-        fill(1e-11, 4)...,
+        1e-5,
+        1e-9,
+        1e-10,
+        1e-11,
         1e-12,
     ]
     noise = [
-        fill(1e-2, 20)...,
-        fill(1e-3, 20)...,
-        fill(1e-5, 30)...,
-        fill(1e-7, 6)...,
-        fill(1e-8, 6)...,
-        fill(1e-9, 2)...,
+        1e-2,
+        1e-5,
         0.0,
     ]
 
     ψhf = [ifelse(mod(i, 2) == 0, "Occ", "Emp") for i in 1:(2N)]
     @assert count(ψhf .== "Occ") == count(ψhf .== "Emp")
 
-    @info "searching for the eigenvalues"
+    @info "Searching for the eigenvalues using DMRG with ishermitian=false"
 
     sweeps = Sweeps(nsweeps; maxdim, cutoff, noise)
 
     initial_guess = random_mps(sites, ψhf; linkdims=10)
-    Edmrg, psi = dmrg(H, initial_guess, sweeps)
-    @show Edmrg
+    Edmrg, psi = dmrg(H, initial_guess, sweeps; ishermitian=false)
+    @info "Found energy $Edmrg using dmrg"
 
     sweeps = Sweeps(nsweeps; maxdim=300, cutoff, noise)
 
-
+    @info "Searching for the eigenvalues using NHDMRG"
     _, ψl0, ψr0= nhdmrg(
         H,
         initial_guess,
@@ -147,7 +100,7 @@ function gap(
         sweeps;
         alg,
         biorthoalg,
-        outputlevel=2,
+        outputlevel=1,
         eigsolve_krylovdim=30,
         eigsolve_maxiter=3,
     )
@@ -195,26 +148,21 @@ function gap(
 end
 
 function main()
-    args = parse_commandline()
-    @show args
+    # number of unit cells
+    N = 10
 
-    N = args["N"]
-    alg = args["alg"]
-    biorthoalg = args["biorthoalg"]
-    weight = args["weight"]
-    offset = args["offset"]
-    scale = args["scale"]
+    # either onesided or twosided
+    alg = "onesided"
+    
+    # biorthogonalization routine, either `biorthoblock` or `fidelity`
+    biorthoalg = "fidelity"
+    
+    # weight to enforce the biorthogonality constraint w.r.t. eigenstates already found
+    weight = 20.0
 
-    E, overlaps = gap(N; alg, biorthoalg, weight, offset, scale)
+    E, overlaps = gap(N; alg, biorthoalg, weight)
 
-    h5open(args["filename"], "w") do f
-        write(f, "E", E)
-        write(f, "overlaps", overlaps)
-
-        for (k, v) in args
-            write(f, "params/$k", v)
-        end
-    end
+    display(overlaps)
 
     return nothing
 end

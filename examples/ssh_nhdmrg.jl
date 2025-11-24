@@ -1,13 +1,12 @@
-using ITensors, ITensorMPS, ITensorNHDMRG
+using ITensors, ITensorMPS, ITensorNHDMRG, Random
 let
     # Create 200 Fermionic indices
-    N = 100
+    N = 50
     sites = siteinds("Fermion", 2N; conserve_qns=true)
 
     # Input operator terms which define
     # a Hamiltonian matrix, and convert
     # these terms to an MPO tensor network
-    # (here we make the 1D Heisenberg model)
     t2, tL, tR = 1.0, 0.9, 1.1
 
     os = OpSum()
@@ -26,22 +25,26 @@ let
     end
     H = MPO(os, sites)
 
+    # make results reproducible 
+    rng = Xoshiro(1234)
+
     # Create an initial random matrix product state
     # with half filling
-    psi0 = random_mps(sites, [ifelse(mod(i, 2) == 0, "Occ", "Emp") for i in 1:2N])
+    psi0 = random_mps(rng, sites, [ifelse(mod(i, 2) == 0, "Occ", "Emp") for i in 1:2N])
 
-    # Plan to do 5 passes or 'sweeps' of DMRG,
+    # Plan to do 15 passes or 'sweeps' of DMRG,
     # setting maximum MPS internal dimensions
     # for each sweep and maximum truncation cutoff
     # used when adapting internal dimensions:
-    nsweeps = 15
-    maxdim = [10, 20, 100, 100, 200]
+    nsweeps = 5
+    maxdim = [20, 50, 100]
     cutoff = 1E-10
+    noise = [1e-5, 1e-7, 0.0]
 
     # Run the DMRG algorithm, returning energy
     # (dominant eigenvalue) and optimized left- and right- MPS
-    energy, psil, psir = nhdmrg(H, psi0, psi0; nsweeps, maxdim, cutoff)
+    energy, psil, psir = nhdmrg(H, psi0, psi0; nsweeps, maxdim, cutoff, noise, alg="onesided")
     println("Final energy = $energy")
 
-    nothing
+    return nothing
 end

@@ -1,13 +1,16 @@
 function nhfactorize(
-    ::Algorithm"physical", phil, phir, drho, lindsl, lindsr, targettags, identities; kwargs...
+    ::Algorithm"biorthoblock", phil, phir, drho, lindsl, lindsr, targettags, identities; kwargs...
 )
+    # https://arxiv.org/abs/2401.15000
     # compute reduced density matrix and apply perturbation
     rho = dag(replaceinds(phil, lindsl, lindsl')) 
     if !isnothing(identities)
         rho *= identities[3]
+        
+        cinds = commoninds(identities[3], phil)
+        rho = replaceinds(rho, cinds', cinds)
     end
-    rho *= prime(phir, "Link")
-    @show inds(rho)
+    rho *= phir
 
     if !isnothing(drho)
         rho += drho
@@ -19,10 +22,7 @@ function nhfactorize(
     Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
     Ybar = replacetags!(Ybar, tags(commonind(Ybar, B)), targettags)
 
-    @show inds(Y)
-    @show inds(Ybar)
-
-    return Y, dag(Ybar), spec
+    return dag(Y), Ybar, spec
 end
 
 function nhfactorize(

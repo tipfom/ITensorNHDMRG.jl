@@ -102,9 +102,9 @@ Returns:
 
 Optional keyword arguments:
 
-  - `alg::String = "twosided"` - local eigenvalue algorithm, either `"onesided"` or `"twosided"`
-  - `biorthoalg::String = "biorthoblock"` - orthogonalization algorithm, eiter `"biorthoblock"` 
-     or `"lrdensity"`
+  - `alg::String = "onesided"` - local eigenvalue algorithm, either `"onesided"` or `"twosided"`
+  - `biorthoalg::String = "fidelity"` - orthogonalization algorithm, eiter `"biorthoblock"` 
+     or `"fidelity"`
   - `isbiortho::Bool=false` - if `true` the input MPS are not biorthogonalized before starting 
      the sweeps 
   - `eigsolve_krylovdim::Int = 3` - maximum dimension of Krylov space used to
@@ -127,15 +127,15 @@ function nhdmrg(
     psil0::MPS,
     psir0::MPS,
     sweeps::Sweeps;
-    alg="twosided",
-    biorthoalg="biorthoblock",
+    alg="onesided",
+    biorthoalg="fidelity",
     isbiortho::Bool=false,
     observer=NoObserver(),
     outputlevel=1,
     # eigsolve kwargs
     eigsolve_tol=1e-14,
-    eigsolve_krylovdim=15,
-    eigsolve_maxiter=2,
+    eigsolve_krylovdim=3,
+    eigsolve_maxiter=1,
     eigsolve_verbosity=0,
     eigsolve_which_eigenvalue=:SR,
     biorthokwargs...,
@@ -145,8 +145,6 @@ function nhdmrg(
             "`dmrg` currently does not support system sizes of 1. You can diagonalize the MPO tensor directly with tools like `LinearAlgebra.eigen`, `KrylovKit.eigsolve`, etc.",
         )
     end
-
-    @info "running eigenvalue alg $alg with biortho alg $biorthoalg"
 
     @debug_check begin
         # Debug level checks
