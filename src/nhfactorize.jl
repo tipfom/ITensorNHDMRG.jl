@@ -13,7 +13,7 @@ function nhfactorize(
     rho *= phir
 
     if !isnothing(drho)
-        rho += drho
+        rho += swapprime(drho, 0=>1)
     end
 
     B, Y, Ybar, spec = biorthoblocktransform(rho, lindsl', dag(lindsr); kwargs...)
