@@ -19,8 +19,8 @@ function nhfactorize(
     B, Y, Ybar, spec = biorthoblocktransform(rho, lindsl', dag(lindsr); kwargs...)
     noprime!(Y)
     noprime!(Ybar)
-    Y = replacetags!(Y, tags(commonind(Y, B)), targettags)
-    Ybar = replacetags!(Ybar, tags(commonind(Ybar, B)), targettags)
+    Y = replaceinds!(Y, commonind(Y, B) => settags(commonind(Y, B), targettags))
+    Ybar = replaceinds!(Ybar, commonind(Ybar, B) => settags(commonind(Ybar, B), targettags))
 
     return dag(Y), Ybar, spec
 end
